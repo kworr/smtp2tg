@@ -99,7 +99,7 @@ fn relay_mails(maildir: &Path, core: &TelegramTransport) -> Result<()> {
 						reply.push(format!("**From:** `{:?}`", address_into_iter(from).collect::<Vec<_>>().join(", ")).into());
 					}
 					if let Some(sender) = mail.sender() {
-						reply.push(format!("**Sender:** `{:?}`", sender).into());
+						reply.push(format!("**Sender:** `{:?}`", address_into_iter(sender).collect::<Vec<_>>().join(", ")).into());
 					}
 					reply.push("".into());
 					let header_size = reply.join("\n").len() + 1;
