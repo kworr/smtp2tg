@@ -1,0 +1,19 @@
+# Telegram API key
+api_key = "YOU_KNOW_WHERE_TO_GET_THIS"
+# where SaMoToP stores incoming messages
+maildir = "./maildir"
+# default recipient, get's some debug info + mail that we couldn't deliver
+# should be in "recipients" table
+default = "somebody@example.com"
+# where to listen on, say "socket" to listen on "./smtp2tg.sock"
+#listen_on = "0.0.0.0:25"
+listen_on = "socket"
+
+[recipients]
+# make sure you quote emails, as "@" can't go there unquoted. And by default
+# we need FQDNs
+"somebody@example.com" = 1 # user id's are positive
+"root@example.com" = -1 # group id's are negative
+
+# to look up chat/group id you can use debug settings in Telegram clients,
+# or some bot like @getidsbot or @RawDataBot

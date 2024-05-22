@@ -1,8 +1,5 @@
 use anyhow::Result;
 use async_std::task;
-//use async_trait::async_trait;
-//use futures::io::AsyncRead;
-//use mail_parser::Message;
 use samotop::{
 	mail::{
 		Builder,
@@ -21,7 +18,10 @@ use telegram_bot::{
 
 use std::{
 	borrow::Cow,
-	collections::HashMap,
+	collections::{
+		HashMap,
+		HashSet,
+	},
 	io::Read,
 	path::{
 		Path,
@@ -31,34 +31,133 @@ use std::{
 	vec::Vec,
 };
 
+fn address_into_iter<'a>(addr: &'a mail_parser::Address<'a, >) -> impl Iterator<Item = Cow<'a, str>> {
+	addr.clone().into_list().into_iter().map(|a| a.address.unwrap())
+}
 
-fn relay_mails(maildir: &Path, core: &Core) -> Result<()> {
-	use mail_parser::*;
-
+fn relay_mails(maildir: &Path, core: &TelegramTransport) -> Result<()> {
 	let new_dir = maildir.join("new");
 
 	std::fs::create_dir_all(&new_dir)?;
 
 	let files = std::fs::read_dir(new_dir)?;
 	for file in files {
-		dbg!(&file);
 		let file = file?;
 		let mut buf = Vec::new();
 		std::fs::File::open(file.path())?.read_to_end(&mut buf)?;
 
 		task::block_on(async move {
-			match MessageParser::default().parse(&buf[..]) {
+			match mail_parser::MessageParser::default().parse(&buf[..]) {
 				Some(mail) => {
-					/*
-					dbg!(&mail);
-					let to = match mail.to() {
-						Some(mail) => mail.into_list().into_iter().map(|a| a.address.unwrap()).collect(),
-						None => match mail.header("X-Samotop-To").unwrap() {
-							mail_parser::HeaderValue::Address(addr) => addr.address.unwrap(),
-						},
+					let mail = mail.clone();
+
+					// Fetching address lists from fields we know
+					let mut to = HashSet::new();
+					if let Some(addr) = mail.to() {
+						let _ = address_into_iter(addr).map(|x| to.insert(x));
 					};
-					dbg!(&to);
+					if let Some(addr) = mail.header("X-Samotop-To") {
+						match addr {
+							mail_parser::HeaderValue::Address(addr) => {
+								let _ = address_into_iter(addr).map(|x| to.insert(x));
+							},
+							mail_parser::HeaderValue::Text(text) => {
+								to.insert(text.clone());
+							},
+							_ => {}
+						}
+					};
+
+					// Adding all known addresses to recipient list, for anyone else adding default
+					// Also if list is empty also adding default
+					let mut rcpt: HashSet<UserId> = HashSet::new();
+					for item in to {
+						let item = item.into_owned();
+						if core.recipients.contains_key(&item) {
+							rcpt.insert(core.recipients[&item]);
+						} else {
+							core.debug(format!("Recipient [{}] not found.", &item)).await.unwrap();
+							rcpt.insert(core.default);
+						}
+					};
+					if rcpt.is_empty() {
+						rcpt.insert(core.default);
+						core.debug("No recipient or envelope address.").await.unwrap();
+					};
+
+					// prepating message header
+					let mut reply: Vec<Cow<str>> = vec![];
+					if let Some(subject) = mail.subject() {
+						reply.push(format!("<b>Subject:</b> {}", subject).into());
+					} else if let Some(thread) = mail.thread_name() {
+						reply.push(format!("<b>Thread:</b> {}", thread).into());
+					}
+					if let Some(from) = mail.from() {
+						reply.push(format!("<b>From:</b> {:?}", from).into());
+					}
+					if let Some(sender) = mail.sender() {
+						reply.push(format!("<b>Sender:</b> {:?}", sender).into());
+					}
+					reply.push("".into());
+					let header_size = reply.join("\n").len() + 1;
+
+					let html_parts = mail.html_body_count();
+					let text_parts = mail.text_body_count();
+					let attachments = mail.attachment_count();
+					if html_parts != text_parts {
+						core.debug(format!("Hm, we have {} HTML parts and {} text parts.", html_parts, text_parts)).await.unwrap();
+					}
+					//let mut html_num = 0;
+					let mut text_num = 0;
+					let mut file_num = 0;
+					// let's display first html or text part as body
+					let mut body = "".into();
+					/*
+					 * actually I don't wanna parse that html stuff
+					if html_parts > 0 {
+						let text = mail.body_html(0).unwrap();
+						if text.len() < 4096 - header_size {
+							body = text;
+							html_num = 1;
+						}
+					};
 					*/
+					if body == "" && text_parts > 0 {
+						let text = mail.body_text(0).unwrap();
+						if text.len() < 4096 - header_size {
+							body = text;
+							text_num = 1;
+						}
+					};
+					reply.push(body);
+
+					// and let's coillect all other attachment parts
+					let mut files_to_send = vec![];
+					/*
+					 * let's just skip html parts for now, they just duplicate text?
+					while html_num < html_parts {
+						files_to_send.push(mail.html_part(html_num).unwrap());
+						html_num += 1;
+					}
+					*/
+					while text_num < text_parts {
+						files_to_send.push(mail.text_part(text_num).unwrap());
+						text_num += 1;
+					}
+					while file_num < attachments {
+						files_to_send.push(mail.attachment(file_num).unwrap());
+						file_num += 1;
+					}
+
+					for chat in rcpt {
+						core.send(chat, reply.join("\n")).await.unwrap();
+						for chunk in &files_to_send {
+							task::sleep(Duration::from_secs(5)).await;
+							let data = chunk.contents().to_vec();
+							let obj = telegram_bot::types::InputFileUpload::with_data(data, "Attachment");
+							core.sendfile(chat, obj).await.unwrap();
+						}
+					}
 				},
 				None => { core.debug("None mail.").await.unwrap(); },
 				//send_to_sendgrid(mail, sendgrid_api_key).await;
@@ -74,38 +173,45 @@ fn my_prudence() -> Prudence {
 	Prudence::default().with_read_timeout(Duration::from_secs(60)).with_banner_delay(Duration::from_secs(1))
 }
 
-pub struct Core {
+pub struct TelegramTransport {
 	default: UserId,
 	tg: Api,
 	recipients: HashMap<String, UserId>,
 }
 
-impl Core {
-	pub fn new(settings: &config::Config) -> Result<Core> {
+impl TelegramTransport {
+	pub fn new(settings: &config::Config) -> TelegramTransport {
 		let api_key = settings.get_string("api_key").unwrap();
 		let tg = Api::new(api_key);
-		let default_recipient = settings.get_string("default")?;
-		let recipients: HashMap<String, UserId> = settings.get_table("recipients")?.into_iter().map(|(a, b)| (a, UserId::new(b.into_int().unwrap()))).collect();
+		let default_recipient = settings.get_string("default").unwrap();
+		let recipients: HashMap<String, UserId> = settings.get_table("recipients").unwrap().into_iter().map(|(a, b)| (a, UserId::new(b.into_int().unwrap()))).collect();
+		// Barf if no default
 		let default = recipients[&default_recipient];
 
-		Ok(Core {
+		TelegramTransport {
 			default,
 			tg,
 			recipients,
-		})
+		}
 	}
 
 	pub async fn debug<'b, S>(&self, msg: S) -> Result<()>
 	where S: Into<Cow<'b, str>> {
 		self.tg.send(SendMessage::new(self.default, msg)
-			.parse_mode(ParseMode::Markdown)).await?;
+			.parse_mode(ParseMode::Html)).await?;
 		Ok(())
 	}
 
-	pub async fn send<'b, S>(&self, to: String, msg: S) -> Result<()>
+	pub async fn send<'b, S>(&self, to: UserId, msg: S) -> Result<()>
 	where S: Into<Cow<'b, str>> {
-		self.tg.send(SendMessage::new(self.recipients[&to], msg)
-			.parse_mode(ParseMode::Markdown)).await?;
+		self.tg.send(SendMessage::new(to, msg)
+			.parse_mode(ParseMode::Html)).await?;
+		Ok(())
+	}
+
+	pub async fn sendfile<V>(&self, to: UserId, chunk: V) -> Result<()>
+	where V: Into<telegram_bot::InputFile> {
+		self.tg.send(telegram_bot::SendDocument::new(to, chunk)).await?;
 		Ok(())
 	}
 }
@@ -116,18 +222,18 @@ async fn main() {
 		.add_source(config::File::with_name("smtp2tg.toml"))
 		.build().unwrap();
 
-	let core = Core::new(&settings).unwrap();
+	let core = TelegramTransport::new(&settings);
 	let maildir: PathBuf = settings.get_string("maildir").unwrap().into();
-	let addr = "./smtp2tg.sock";
 	let listen_on = settings.get_string("listen_on").unwrap();
 	let sink = Builder + Name::new("smtp2tg") + DebugService +
 		samotop::smtp::Esmtp.with(samotop::smtp::SmtpParser) + my_prudence() +
+		//TelegramTransport::new(&settings);
 		MailDir::new(maildir.clone()).unwrap();
 
 	task::spawn(async move {
 		loop {
-			task::sleep(Duration::from_secs(5)).await;
 			relay_mails(&maildir, &core).unwrap();
+			task::sleep(Duration::from_secs(5)).await;
 		}
 	});
 
@@ -137,27 +243,4 @@ async fn main() {
 		_ => samotop::server::TcpServer::on(listen_on)
 			.serve(sink.build()).await.unwrap(),
 	};
-	/*
-	task::block_on(async {
-		let be = MyBackend;
-
-		//let mut s = Server::new(be);
-
-		s.addr = "127.0.0.1:2525".to_string();
-		s.domain = "localhost".to_string();
-		s.read_timeout = std::time::Duration::from_secs(10);
-		s.write_timeout = std::time::Duration::from_secs(10);
-		s.max_message_bytes = 10 * 1024 * 1024;
-		s.max_recipients = 50;
-		s.max_line_length = 1000;
-		s.allow_insecure_auth = true;
-
-		println!("Starting server on {}", s.addr);
-		match s.listen_and_serve().await {
-			Ok(_) => println!("Server stopped"),
-			Err(e) => println!("Server error: {}", e),
-		}
-		Ok(())
-	})
-	*/
 }
