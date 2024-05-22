@@ -7,7 +7,10 @@ use samotop::{
 		MailDir,
 		Name
 	},
-	smtp::Prudence,
+	smtp::{
+		SmtpParser,
+		Prudence,
+	},
 };
 use telegram_bot::{
 	Api,
@@ -226,9 +229,7 @@ async fn main() {
 	let maildir: PathBuf = settings.get_string("maildir").unwrap().into();
 	let listen_on = settings.get_string("listen_on").unwrap();
 	let sink = Builder + Name::new("smtp2tg") + DebugService +
-		samotop::smtp::Esmtp.with(samotop::smtp::SmtpParser) + my_prudence() +
-		//TelegramTransport::new(&settings);
-		MailDir::new(maildir.clone()).unwrap();
+		my_prudence() + MailDir::new(maildir.clone()).unwrap();
 
 	task::spawn(async move {
 		loop {
@@ -238,9 +239,15 @@ async fn main() {
 	});
 
 	match listen_on.as_str() {
-		"socket" => samotop::server::UnixServer::on("./smtp2tg.sock")
-			.serve(sink.build()).await.unwrap(),
-		_ => samotop::server::TcpServer::on(listen_on)
-			.serve(sink.build()).await.unwrap(),
+		"socket" => {
+			let sink = sink + samotop::smtp::Lmtp.with(SmtpParser);
+			samotop::server::UnixServer::on("./smtp2tg.sock")
+				.serve(sink.build()).await.unwrap();
+		},
+		_ => {
+			let sink = sink + samotop::smtp::Esmtp.with(SmtpParser);
+			samotop::server::TcpServer::on(listen_on)
+				.serve(sink.build()).await.unwrap();
+		},
 	};
 }
