@@ -91,15 +91,15 @@ fn relay_mails(maildir: &Path, core: &TelegramTransport) -> Result<()> {
 					// prepating message header
 					let mut reply: Vec<Cow<str>> = vec![];
 					if let Some(subject) = mail.subject() {
-						reply.push(format!("<b>Subject:</b> {}", subject).into());
+						reply.push(format!("**Subject:** `{}`", subject).into());
 					} else if let Some(thread) = mail.thread_name() {
-						reply.push(format!("<b>Thread:</b> {}", thread).into());
+						reply.push(format!("**Thread:** `{}`", thread).into());
 					}
 					if let Some(from) = mail.from() {
-						reply.push(format!("<b>From:</b> {:?}", from).into());
+						reply.push(format!("**From:** `{:?}`", from).into());
 					}
 					if let Some(sender) = mail.sender() {
-						reply.push(format!("<b>Sender:</b> {:?}", sender).into());
+						reply.push(format!("**Sender:** `{:?}`", sender).into());
 					}
 					reply.push("".into());
 					let header_size = reply.join("\n").len() + 1;
@@ -132,7 +132,9 @@ fn relay_mails(maildir: &Path, core: &TelegramTransport) -> Result<()> {
 							text_num = 1;
 						}
 					};
+					reply.push("```".into());
 					reply.push(body);
+					reply.push("```".into());
 
 					// and let's coillect all other attachment parts
 					let mut files_to_send = vec![];
