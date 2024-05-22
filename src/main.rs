@@ -96,7 +96,7 @@ fn relay_mails(maildir: &Path, core: &TelegramTransport) -> Result<()> {
 						reply.push(format!("**Thread:** `{}`", thread).into());
 					}
 					if let Some(from) = mail.from() {
-						reply.push(format!("**From:** `{:?}`", from).into());
+						reply.push(format!("**From:** `{:?}`", address_into_iter(from).collect::<Vec<_>>().join(", ")).into());
 					}
 					if let Some(sender) = mail.sender() {
 						reply.push(format!("**Sender:** `{:?}`", sender).into());
@@ -133,7 +133,9 @@ fn relay_mails(maildir: &Path, core: &TelegramTransport) -> Result<()> {
 						}
 					};
 					reply.push("```".into());
-					reply.push(body);
+					for line in body.lines() {
+						reply.push(line.into());
+					}
 					reply.push("```".into());
 
 					// and let's coillect all other attachment parts
@@ -157,7 +159,6 @@ fn relay_mails(maildir: &Path, core: &TelegramTransport) -> Result<()> {
 					for chat in rcpt {
 						core.send(chat, reply.join("\n")).await.unwrap();
 						for chunk in &files_to_send {
-							task::sleep(Duration::from_secs(5)).await;
 							let data = chunk.contents().to_vec();
 							let obj = telegram_bot::types::InputFileUpload::with_data(data, "Attachment");
 							core.sendfile(chat, obj).await.unwrap();
@@ -202,20 +203,23 @@ impl TelegramTransport {
 
 	pub async fn debug<'b, S>(&self, msg: S) -> Result<()>
 	where S: Into<Cow<'b, str>> {
+		task::sleep(Duration::from_secs(5)).await;
 		self.tg.send(SendMessage::new(self.default, msg)
-			.parse_mode(ParseMode::Html)).await?;
+			.parse_mode(ParseMode::Markdown)).await?;
 		Ok(())
 	}
 
 	pub async fn send<'b, S>(&self, to: UserId, msg: S) -> Result<()>
 	where S: Into<Cow<'b, str>> {
+		task::sleep(Duration::from_secs(5)).await;
 		self.tg.send(SendMessage::new(to, msg)
-			.parse_mode(ParseMode::Html)).await?;
+			.parse_mode(ParseMode::Markdown)).await?;
 		Ok(())
 	}
 
 	pub async fn sendfile<V>(&self, to: UserId, chunk: V) -> Result<()>
 	where V: Into<telegram_bot::InputFile> {
+		task::sleep(Duration::from_secs(5)).await;
 		self.tg.send(telegram_bot::SendDocument::new(to, chunk)).await?;
 		Ok(())
 	}
