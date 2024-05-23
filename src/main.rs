@@ -26,6 +26,10 @@ use std::{
 		HashSet,
 	},
 	io::Read,
+	os::unix::fs::{
+		FileTypeExt,
+		PermissionsExt,
+	},
 	path::{
 		Path,
 		PathBuf
@@ -73,19 +77,20 @@ fn relay_mails(maildir: &Path, core: &TelegramTransport) -> Result<()> {
 
 					// Adding all known addresses to recipient list, for anyone else adding default
 					// Also if list is empty also adding default
-					let mut rcpt: HashSet<UserId> = HashSet::new();
+					let mut rcpt: HashSet<&UserId> = HashSet::new();
 					for item in to {
 						let item = item.into_owned();
-						if core.recipients.contains_key(&item) {
-							rcpt.insert(core.recipients[&item]);
-						} else {
-							core.debug(format!("Recipient [{}] not found.", &item)).await.unwrap();
-							rcpt.insert(core.default);
-						}
+						match core.recipients.get(&item) {
+							Some(addr) => rcpt.insert(addr),
+							None => {
+								core.debug(format!("Recipient [{}] not found.", &item)).await.unwrap();
+								rcpt.insert(core.recipients.get("_").unwrap())
+							}
+						};
 					};
 					if rcpt.is_empty() {
-						rcpt.insert(core.default);
 						core.debug("No recipient or envelope address.").await.unwrap();
+						rcpt.insert(core.recipients.get("_").unwrap());
 					};
 
 					// prepating message header
@@ -166,7 +171,6 @@ fn relay_mails(maildir: &Path, core: &TelegramTransport) -> Result<()> {
 					}
 				},
 				None => { core.debug("None mail.").await.unwrap(); },
-				//send_to_sendgrid(mail, sendgrid_api_key).await;
 			};
 		});
 
@@ -180,22 +184,25 @@ fn my_prudence() -> Prudence {
 }
 
 pub struct TelegramTransport {
-	default: UserId,
 	tg: Api,
 	recipients: HashMap<String, UserId>,
 }
 
 impl TelegramTransport {
-	pub fn new(settings: &config::Config) -> TelegramTransport {
-		let api_key = settings.get_string("api_key").unwrap();
-		let tg = Api::new(api_key);
-		let default_recipient = settings.get_string("default").unwrap();
-		let recipients: HashMap<String, UserId> = settings.get_table("recipients").unwrap().into_iter().map(|(a, b)| (a, UserId::new(b.into_int().unwrap()))).collect();
-		// Barf if no default
-		let default = recipients[&default_recipient];
+	pub fn new(settings: config::Config) -> TelegramTransport {
+		let tg = Api::new(settings.get_string("api_key")
+			.expect("[smtp2tg.toml] missing \"api_key\" parameter.\n"));
+		let recipients: HashMap<String, UserId> = settings.get_table("recipients")
+			.expect("[smtp2tg.toml] missing table \"recipients\".\n")
+			.into_iter().map(|(a, b)| (a, UserId::new(b.into_int()
+				.expect("[smtp2tg.toml] \"recipient\" table values should be integers.\n")
+				))).collect();
+		if !recipients.contains_key("_") {
+			eprintln!("[smtp2tg.toml] \"recipient\" table misses \"default_recipient\".\n");
+			panic!("no default recipient");
+		}
 
 		TelegramTransport {
-			default,
 			tg,
 			recipients,
 		}
@@ -204,12 +211,12 @@ impl TelegramTransport {
 	pub async fn debug<'b, S>(&self, msg: S) -> Result<()>
 	where S: Into<Cow<'b, str>> {
 		task::sleep(Duration::from_secs(5)).await;
-		self.tg.send(SendMessage::new(self.default, msg)
+		self.tg.send(SendMessage::new(self.recipients.get("_").unwrap(), msg)
 			.parse_mode(ParseMode::Markdown)).await?;
 		Ok(())
 	}
 
-	pub async fn send<'b, S>(&self, to: UserId, msg: S) -> Result<()>
+	pub async fn send<'b, S>(&self, to: &UserId, msg: S) -> Result<()>
 	where S: Into<Cow<'b, str>> {
 		task::sleep(Duration::from_secs(5)).await;
 		self.tg.send(SendMessage::new(to, msg)
@@ -217,7 +224,7 @@ impl TelegramTransport {
 		Ok(())
 	}
 
-	pub async fn sendfile<V>(&self, to: UserId, chunk: V) -> Result<()>
+	pub async fn sendfile<V>(&self, to: &UserId, chunk: V) -> Result<()>
 	where V: Into<telegram_bot::InputFile> {
 		task::sleep(Duration::from_secs(5)).await;
 		self.tg.send(telegram_bot::SendDocument::new(to, chunk)).await?;
@@ -229,11 +236,15 @@ impl TelegramTransport {
 async fn main() {
 	let settings: config::Config = config::Config::builder()
 		.add_source(config::File::with_name("smtp2tg.toml"))
-		.build().unwrap();
+		.build()
+		.expect("[smtp2tg.toml] there was an error reading config\n\
+			\tplease consult \"smtp2tg.toml.example\" for details");
 
-	let core = TelegramTransport::new(&settings);
-	let maildir: PathBuf = settings.get_string("maildir").unwrap().into();
-	let listen_on = settings.get_string("listen_on").unwrap();
+	let maildir: PathBuf = settings.get_string("maildir")
+		.expect("[smtp2tg.toml] missing \"maildir\" parameter.\n").into();
+	let listen_on = settings.get_string("listen_on")
+		.expect("[smtp2tg.toml] missing \"listen_on\" parameter.\n");
+	let core = TelegramTransport::new(settings);
 	let sink = Builder + Name::new("smtp2tg") + DebugService +
 		my_prudence() + MailDir::new(maildir.clone()).unwrap();
 
@@ -246,8 +257,37 @@ async fn main() {
 
 	match listen_on.as_str() {
 		"socket" => {
+			let socket_path = "./smtp2tg.sock";
+			match std::fs::symlink_metadata(socket_path) {
+				Ok(metadata) => {
+					if metadata.file_type().is_socket() {
+						std::fs::remove_file(socket_path)
+							.expect("[smtp2tg] failed to remove old socket.\n");
+					} else {
+						eprintln!("[smtp2tg] \"./smtp2tg.sock\" we wanted to use is actually not a socket.\n\
+							[smtp2tg] please check the file and remove it manually.\n");
+						panic!("socket path unavailable");
+					}
+				},
+				Err(err) => {
+					match err.kind() {
+						std::io::ErrorKind::NotFound => {},
+						_ => {
+							eprintln!("{:?}", err);
+							panic!("unhandled file type error");
+						}
+					};
+				}
+			};
+
 			let sink = sink + samotop::smtp::Lmtp.with(SmtpParser);
-			samotop::server::UnixServer::on("./smtp2tg.sock")
+			task::spawn(async move {
+				// Postpone mode change on the socket. I can't actually change
+				// other way, as UnixServer just grabs path, and blocks
+				task::sleep(Duration::from_secs(1)).await;
+				std::fs::set_permissions(socket_path, std::fs::Permissions::from_mode(0o777)).unwrap();
+			});
+			samotop::server::UnixServer::on(socket_path)
 				.serve(sink.build()).await.unwrap();
 		},
 		_ => {
