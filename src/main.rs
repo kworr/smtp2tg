@@ -14,6 +14,7 @@ use samotop::{
 };
 use telegram_bot::{
 	Api,
+	MessageOrChannelPost,
 	ParseMode,
 	SendMessage,
 	UserId,
@@ -143,7 +144,7 @@ fn relay_mails(maildir: &Path, core: &TelegramTransport) -> Result<()> {
 					}
 					reply.push("```".into());
 
-					// and let's coillect all other attachment parts
+					// and let's collect all other attachment parts
 					let mut files_to_send = vec![];
 					/*
 					 * let's just skip html parts for now, they just duplicate text?
@@ -162,11 +163,11 @@ fn relay_mails(maildir: &Path, core: &TelegramTransport) -> Result<()> {
 					}
 
 					for chat in rcpt {
-						core.send(chat, reply.join("\n")).await.unwrap();
+						let base_post = core.send(chat, reply.join("\n")).await.unwrap();
 						for chunk in &files_to_send {
 							let data = chunk.contents().to_vec();
 							let obj = telegram_bot::types::InputFileUpload::with_data(data, "Attachment");
-							core.sendfile(chat, obj).await.unwrap();
+							core.sendfile(chat, obj, Some(&base_post)).await.unwrap();
 						}
 					}
 				},
@@ -208,26 +209,31 @@ impl TelegramTransport {
 		}
 	}
 
-	pub async fn debug<'b, S>(&self, msg: S) -> Result<()>
+	pub async fn debug<'b, S>(&self, msg: S) -> Result<MessageOrChannelPost>
 	where S: Into<Cow<'b, str>> {
 		task::sleep(Duration::from_secs(5)).await;
-		self.tg.send(SendMessage::new(self.recipients.get("_").unwrap(), msg)
-			.parse_mode(ParseMode::Markdown)).await?;
-		Ok(())
+		Ok(self.tg.send(SendMessage::new(self.recipients.get("_").unwrap(), msg)
+			.parse_mode(ParseMode::Markdown)).await?)
 	}
 
-	pub async fn send<'b, S>(&self, to: &UserId, msg: S) -> Result<()>
+	pub async fn send<'b, S>(&self, to: &UserId, msg: S) -> Result<MessageOrChannelPost>
 	where S: Into<Cow<'b, str>> {
 		task::sleep(Duration::from_secs(5)).await;
-		self.tg.send(SendMessage::new(to, msg)
-			.parse_mode(ParseMode::Markdown)).await?;
-		Ok(())
+		Ok(self.tg.send(SendMessage::new(to, msg)
+			.parse_mode(ParseMode::Markdown)).await?)
 	}
 
-	pub async fn sendfile<V>(&self, to: &UserId, chunk: V) -> Result<()>
+	pub async fn sendfile<V>(&self, to: &UserId, chunk: V, basic_mail: Option<&MessageOrChannelPost>) -> Result<()>
 	where V: Into<telegram_bot::InputFile> {
 		task::sleep(Duration::from_secs(5)).await;
-		self.tg.send(telegram_bot::SendDocument::new(to, chunk)).await?;
+		match basic_mail {
+			Some(post) => {
+				self.tg.send(telegram_bot::SendDocument::new(to, chunk).reply_to(post)).await?;
+			},
+			None => {
+				self.tg.send(telegram_bot::SendDocument::new(to, chunk)).await?;
+			},
+		};
 		Ok(())
 	}
 }
@@ -247,6 +253,8 @@ async fn main() {
 	let core = TelegramTransport::new(settings);
 	let sink = Builder + Name::new("smtp2tg") + DebugService +
 		my_prudence() + MailDir::new(maildir.clone()).unwrap();
+
+	env_logger::init();
 
 	task::spawn(async move {
 		loop {

@@ -8,6 +8,7 @@ edition = "2021"
 anyhow = "*"
 async-std = { version = "*", features = [ "tokio1" ] }
 config = { version = "*", default-features = false, features = [ "toml" ] }
+env_logger = "*"
 telegram-bot = { git = "https://github.com/telegram-rs/telegram-bot" }
 mail-parser = { version = "*", features = ["serde", "serde_support"] }
 samotop = "*"
