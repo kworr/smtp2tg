@@ -14,3 +14,13 @@ $config_directory/generic:
 	<>	postmaster@example.com
 
 Actually not sure which one works...
+
+I kindda know this whole stuff is written in completely wrong way, but I have
+reasons for that. SaMoToP prevent me from creating a separate transport so I'm
+just using MailDir and directly reading files from there in separate task. Also
+socket permissions can't actually be hinted to SaMoToP, and I don't want to
+mess with umask in this case, hence the extra task that changes socket
+permissions later. The whole MailDir idea was shamelessly ripped from
+https://github.com/meysam81/lori, kudos to the author. And if you think I
+actually copypasted too much code - you are free to use this under APACHE-2.0
+license.
