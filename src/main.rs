@@ -15,12 +15,16 @@ use samotop::{
 		Prudence,
 	},
 };
-use telegram_bot::{
-	Api,
-	MessageOrChannelPost,
-	ParseMode,
-	SendMessage,
-	UserId,
+use teloxide::{
+	Bot,
+	prelude::{
+		Requester,
+		RequesterExt,
+	},
+	types::{
+		ChatId,
+		ParseMode::MarkdownV2,
+	},
 };
 
 use std::{
@@ -54,11 +58,11 @@ async fn relay_mails(maildir: &Path, core: &TelegramTransport) -> Result<()> {
 	let files = std::fs::read_dir(new_dir)?;
 	for file in files {
 		let file = file?;
-		let mut buf = Vec::new();
-		std::fs::File::open(file.path())?.read_to_end(&mut buf)?;
+		let mut buf: String = Default::default();
+		std::fs::File::open(file.path())?.read_to_string(&mut buf)?;
 
-		let mail = mail_parser::MessageParser::default().parse(&buf[..])
-			.ok_or(anyhow!("Failed to parse mail `{:?}`.", file))?.clone();
+		let mail = mail_parser::MessageParser::new().parse(&buf)
+			.ok_or(anyhow!("Failed to parse mail `{:?}`.", file))?;
 
 		// Fetching address lists from fields we know
 		let mut to = HashSet::new();
@@ -79,7 +83,7 @@ async fn relay_mails(maildir: &Path, core: &TelegramTransport) -> Result<()> {
 
 		// Adding all known addresses to recipient list, for anyone else adding default
 		// Also if list is empty also adding default
-		let mut rcpt: HashSet<&UserId> = HashSet::new();
+		let mut rcpt: HashSet<&ChatId> = HashSet::new();
 		for item in to {
 			let item = item.into_owned();
 			match core.recipients.get(&item) {
@@ -98,7 +102,7 @@ async fn relay_mails(maildir: &Path, core: &TelegramTransport) -> Result<()> {
 		};
 
 		// prepating message header
-		let mut reply: Vec<Cow<str>> = vec![];
+		let mut reply: Vec<Cow<'_, str>> = vec![];
 		if let Some(subject) = mail.subject() {
 			reply.push(format!("**Subject:** `{}`", subject).into());
 		} else if let Some(thread) = mail.thread_name() {
@@ -168,12 +172,47 @@ async fn relay_mails(maildir: &Path, core: &TelegramTransport) -> Result<()> {
 			file_num += 1;
 		}
 
+		let msg = reply.join("\n");
 		for chat in rcpt {
-			let base_post = core.send(chat, reply.join("\n")).await?;
-			for chunk in &files_to_send {
-				let data = chunk.contents().to_vec();
-				let obj = telegram_bot::types::InputFileUpload::with_data(data, "Attachment");
-				core.sendfile(chat, obj, Some(&base_post)).await?;
+			if !files_to_send.is_empty() {
+				let mut files = vec![];
+				let mut first_one = true;
+				for chunk in &files_to_send {
+					let data = chunk.contents();
+					let mut filename: Option<String> = None;
+					for header in chunk.headers() {
+						if header.name() == "Content-Type" {
+							match header.value() {
+								mail_parser::HeaderValue::ContentType(contenttype) => {
+									if let Some(fname) = contenttype.attribute("name") {
+										filename = Some(fname.to_owned());
+									}
+								},
+								_ => {
+									core.debug("Attachment has bad ContentType header.").await?;
+								},
+							};
+						};
+					};
+					let filename = if let Some(fname) = filename {
+						fname
+					} else {
+						"Attachment.txt".into()
+					};
+					let item = teloxide::types::InputMediaDocument::new(
+						teloxide::types::InputFile::memory(data.to_vec())
+						.file_name(filename));
+					let item = if first_one {
+						first_one = false;
+						item.caption(&msg).parse_mode(MarkdownV2)
+					} else {
+						item
+					};
+					files.push(teloxide::types::InputMedia::Document(item));
+				}
+				core.sendgroup(chat, files).await?;
+			} else {
+				core.send(chat, &msg).await?;
 			}
 		}
 
@@ -187,17 +226,18 @@ fn my_prudence() -> Prudence {
 }
 
 pub struct TelegramTransport {
-	tg: Api,
-	recipients: HashMap<String, UserId>,
+	tg: teloxide::adaptors::DefaultParseMode<Bot>,
+	recipients: HashMap<String, ChatId>,
 }
 
 impl TelegramTransport {
 	pub fn new(settings: config::Config) -> TelegramTransport {
-		let tg = Api::new(settings.get_string("api_key")
-			.expect("[smtp2tg.toml] missing \"api_key\" parameter.\n"));
-		let recipients: HashMap<String, UserId> = settings.get_table("recipients")
+		let tg = Bot::new(settings.get_string("api_key")
+			.expect("[smtp2tg.toml] missing \"api_key\" parameter.\n"))
+			.parse_mode(MarkdownV2);
+		let recipients: HashMap<String, ChatId> = settings.get_table("recipients")
 			.expect("[smtp2tg.toml] missing table \"recipients\".\n")
-			.into_iter().map(|(a, b)| (a, UserId::new(b.into_int()
+			.into_iter().map(|(a, b)| (a, ChatId (b.into_int()
 				.expect("[smtp2tg.toml] \"recipient\" table values should be integers.\n")
 				))).collect();
 		if !recipients.contains_key("_") {
@@ -211,32 +251,22 @@ impl TelegramTransport {
 		}
 	}
 
-	pub async fn debug<'b, S>(&self, msg: S) -> Result<MessageOrChannelPost>
-	where S: Into<Cow<'b, str>> {
+	pub async fn debug<'b, S>(&self, msg: S) -> Result<teloxide::types::Message>
+	where S: Into<String> {
 		task::sleep(Duration::from_secs(5)).await;
-		Ok(self.tg.send(SendMessage::new(self.recipients.get("_").unwrap(), msg)
-			.parse_mode(ParseMode::Markdown)).await?)
+		Ok(self.tg.send_message(*self.recipients.get("_").unwrap(), msg).await?)
 	}
 
-	pub async fn send<'b, S>(&self, to: &UserId, msg: S) -> Result<MessageOrChannelPost>
-	where S: Into<Cow<'b, str>> {
+	pub async fn send<'b, S>(&self, to: &ChatId, msg: S) -> Result<teloxide::types::Message>
+	where S: Into<String> {
 		task::sleep(Duration::from_secs(5)).await;
-		Ok(self.tg.send(SendMessage::new(to, msg)
-			.parse_mode(ParseMode::Markdown)).await?)
+		Ok(self.tg.send_message(*to, msg).await?)
 	}
 
-	pub async fn sendfile<V>(&self, to: &UserId, chunk: V, basic_mail: Option<&MessageOrChannelPost>) -> Result<()>
-	where V: Into<telegram_bot::InputFile> {
+	pub async fn sendgroup<M>(&self, to: &ChatId, media: M) -> Result<Vec<teloxide::types::Message>>
+	where M: IntoIterator<Item = teloxide::types::InputMedia> {
 		task::sleep(Duration::from_secs(5)).await;
-		match basic_mail {
-			Some(post) => {
-				self.tg.send(telegram_bot::SendDocument::new(to, chunk).reply_to(post)).await?;
-			},
-			None => {
-				self.tg.send(telegram_bot::SendDocument::new(to, chunk)).await?;
-			},
-		};
-		Ok(())
+		Ok(self.tg.send_media_group(*to, media).await?)
 	}
 }
 
