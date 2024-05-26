@@ -296,8 +296,8 @@ async fn main() {
 				if let Err(err) = core.debug(format!("Sending emails failed:\n{:?}", err)).await {
 					// in case that also fails - write some logs and bail
 					eprintln!("Failed to contact Telegram:\n{:?}", err);
-					task::sleep(Duration::from_secs(5 * 60)).await;
 				};
+				task::sleep(Duration::from_secs(5 * 60)).await;
 			};
 			task::sleep(Duration::from_secs(5)).await;
 		}
