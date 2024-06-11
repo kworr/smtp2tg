@@ -226,7 +226,7 @@ fn my_prudence() -> Prudence {
 }
 
 pub struct TelegramTransport {
-	tg: teloxide::adaptors::DefaultParseMode<Bot>,
+	tg: teloxide::adaptors::DefaultParseMode<teloxide::adaptors::Throttle<Bot>>,
 	recipients: HashMap<String, ChatId>,
 }
 
@@ -234,6 +234,7 @@ impl TelegramTransport {
 	pub fn new(settings: config::Config) -> TelegramTransport {
 		let tg = Bot::new(settings.get_string("api_key")
 			.expect("[smtp2tg.toml] missing \"api_key\" parameter.\n"))
+			.throttle(teloxide::adaptors::throttle::Limits::default())
 			.parse_mode(MarkdownV2);
 		let recipients: HashMap<String, ChatId> = settings.get_table("recipients")
 			.expect("[smtp2tg.toml] missing table \"recipients\".\n")
@@ -253,19 +254,16 @@ impl TelegramTransport {
 
 	pub async fn debug<'b, S>(&self, msg: S) -> Result<teloxide::types::Message>
 	where S: Into<String> {
-		task::sleep(Duration::from_secs(5)).await;
 		Ok(self.tg.send_message(*self.recipients.get("_").unwrap(), msg).await?)
 	}
 
 	pub async fn send<'b, S>(&self, to: &ChatId, msg: S) -> Result<teloxide::types::Message>
 	where S: Into<String> {
-		task::sleep(Duration::from_secs(5)).await;
 		Ok(self.tg.send_message(*to, msg).await?)
 	}
 
 	pub async fn sendgroup<M>(&self, to: &ChatId, media: M) -> Result<Vec<teloxide::types::Message>>
 	where M: IntoIterator<Item = teloxide::types::InputMedia> {
-		task::sleep(Duration::from_secs(5)).await;
 		Ok(self.tg.send_media_group(*to, media).await?)
 	}
 }

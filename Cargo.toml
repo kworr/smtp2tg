@@ -1,6 +1,6 @@
 [package]
 name = "smtp2tg"
-version = "0.2.0"
+version = "0.2.1"
 authors = [ "arcade" ]
 edition = "2021"
 
@@ -9,7 +9,7 @@ anyhow = "*"
 async-std = { version = "*", features = [ "tokio1" ] }
 config = { version = "*", default-features = false, features = [ "toml" ] }
 env_logger = "*"
-teloxide = "*"
+teloxide = { version = "*", features = [ "rustls", "throttle" ] }
 mail-parser = { version = "*", features = ["serde", "serde_support"] }
 samotop = "*"
 
