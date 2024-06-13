@@ -284,8 +284,6 @@ async fn main() {
 	let sink = Builder + Name::new("smtp2tg") + DebugService +
 		my_prudence() + MailDir::new(maildir.clone()).unwrap();
 
-	env_logger::init();
-
 	task::spawn(async move {
 		loop {
 			// relay mails
