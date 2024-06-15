@@ -5,12 +5,12 @@ authors = [ "arcade" ]
 edition = "2021"
 
 [dependencies]
-anyhow = "*"
-async-std = { version = "*", features = [ "tokio1" ] }
-config = { version = "*", default-features = false, features = [ "toml" ] }
-teloxide = { version = "*", features = [ "rustls", "throttle" ] }
-mail-parser = { version = "*", features = ["serde", "serde_support"] }
-samotop = { version = "*", default-features = false, features = [ "delivery", "parser-peg" ] }
+anyhow = "1.0.86"
+async-std = { version = "1.12.0", features = [ "tokio1" ] }
+config = { version = "0.14.0", default-features = false, features = [ "toml" ] }
+teloxide = { version = "0.12.2", features = [ "rustls", "throttle" ] }
+mail-parser = { version = "0.9.3", features = ["serde", "serde_support"] }
+samotop = { version = "0.13.2", default-features = false, features = [ "delivery", "parser-peg" ] }
 
 [profile.release]
 lto = true

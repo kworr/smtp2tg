@@ -23,6 +23,8 @@ use teloxide::{
 	},
 	types::{
 		ChatId,
+		InputMedia,
+		Message,
 		ParseMode::MarkdownV2,
 	},
 };
@@ -147,9 +149,7 @@ async fn relay_mails(maildir: &Path, core: &TelegramTransport) -> Result<()> {
 			}
 		};
 		reply.push("```".into());
-		for line in body.lines() {
-			reply.push(line.into());
-		}
+		reply.extend(body.lines().map(|x| x.into()));
 		reply.push("```".into());
 
 		// and let's collect all other attachment parts
@@ -208,7 +208,7 @@ async fn relay_mails(maildir: &Path, core: &TelegramTransport) -> Result<()> {
 					} else {
 						item
 					};
-					files.push(teloxide::types::InputMedia::Document(item));
+					files.push(InputMedia::Document(item));
 				}
 				core.sendgroup(chat, files).await?;
 			} else {
@@ -252,18 +252,18 @@ impl TelegramTransport {
 		}
 	}
 
-	pub async fn debug<'b, S>(&self, msg: S) -> Result<teloxide::types::Message>
+	pub async fn debug<'b, S>(&self, msg: S) -> Result<Message>
 	where S: Into<String> {
 		Ok(self.tg.send_message(*self.recipients.get("_").unwrap(), msg).await?)
 	}
 
-	pub async fn send<'b, S>(&self, to: &ChatId, msg: S) -> Result<teloxide::types::Message>
+	pub async fn send<'b, S>(&self, to: &ChatId, msg: S) -> Result<Message>
 	where S: Into<String> {
 		Ok(self.tg.send_message(*to, msg).await?)
 	}
 
-	pub async fn sendgroup<M>(&self, to: &ChatId, media: M) -> Result<Vec<teloxide::types::Message>>
-	where M: IntoIterator<Item = teloxide::types::InputMedia> {
+	pub async fn sendgroup<M>(&self, to: &ChatId, media: M) -> Result<Vec<Message>>
+	where M: IntoIterator<Item = InputMedia> {
 		Ok(self.tg.send_media_group(*to, media).await?)
 	}
 }
