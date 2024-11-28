@@ -1,14 +1,15 @@
 # Telegram API key
 api_key = "YOU_KNOW_WHERE_TO_GET_THIS"
-# where SaMoToP stores incoming messages
-maildir = "./maildir"
-# where to listen on, say "socket" to listen on "./smtp2tg.sock"
-#listen_on = "0.0.0.0:25"
-listen_on = "socket"
+# where to listen on (sockets are not supported since 0.3.0)
+listen_on = "0.0.0.0:25"
+# whether we need to handle unknown adresses
+# - relay: send them to default one
+# - deny: drop them
+unknown = "relay"
 
 [recipients]
 # there should be default recipient, get's some debug info + mail that we
-# couldn't deliver
+# couldn't deliver (if enabled)
 _ = 1
 # make sure you quote emails, as "@" can't go there unquoted. And by default
 # we need FQDNs
