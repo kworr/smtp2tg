@@ -126,14 +126,14 @@ impl TelegramTransport {
 				match self.recipients.get(item) {
 					Some(addr) => rcpt.insert(addr),
 					None => {
-						self.debug(format!("Recipient [{}] not found.", &item)).await?;
+						self.debug(format!("Recipient [{}] not found\\.", &item)).await?;
 						rcpt.insert(self.recipients.get("_")
-							.ok_or(anyhow!("Missing default address in recipient table."))?)
+							.ok_or(anyhow!("Missing default address in recipient table\\."))?)
 					}
 				};
 			};
 			if rcpt.is_empty() {
-				self.debug("No recipient or envelope address.").await?;
+				self.debug("No recipient or envelope address\\.").await?;
 				rcpt.insert(self.recipients.get("_")
 					.ok_or(anyhow!("Missing default address in recipient table."))?);
 			};
@@ -153,7 +153,7 @@ impl TelegramTransport {
 			let text_parts = mail.text_body_count();
 			let attachments = mail.attachment_count();
 			if html_parts != text_parts {
-				self.debug(format!("Hm, we have {} HTML parts and {} text parts.", html_parts, text_parts)).await?;
+				self.debug(format!("Hm, we have {} HTML parts and {} text parts\\.", html_parts, text_parts)).await?;
 			}
 			//let mut html_num = 0;
 			let mut text_num = 0;
