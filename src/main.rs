@@ -219,7 +219,7 @@ impl TelegramTransport {
 										}
 									},
 									_ => {
-										self.debug("Attachment has bad ContentType header.").await?;
+										self.debug("Attachment has bad ContentType header\\.").await?;
 									},
 								};
 							};
