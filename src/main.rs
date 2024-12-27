@@ -53,6 +53,7 @@ struct TelegramTransport {
 	recipients: HashMap<String, ChatId>,
 	relay: bool,
 	tg: teloxide::adaptors::DefaultParseMode<teloxide::adaptors::Throttle<Bot>>,
+	fields: HashSet<String>,
 }
 
 impl TelegramTransport {
@@ -71,6 +72,9 @@ impl TelegramTransport {
 			eprintln!("[smtp2tg.toml] \"recipient\" table misses \"default_recipient\".\n");
 			panic!("no default recipient");
 		}
+		let fields = HashSet::<String>::from_iter(settings.get_array("fields")
+			.expect("[smtp2tg.toml] \"fields\" should be an array")
+			.iter().map(|x| x.clone().into_string().expect("should be strings")));
 		let value = settings.get_string("unknown");
 		let relay = match value {
 			Ok(value) => {
@@ -95,6 +99,7 @@ impl TelegramTransport {
 			recipients,
 			relay,
 			tg,
+			fields,
 		}
 	}
 
@@ -140,12 +145,21 @@ impl TelegramTransport {
 
 			// prepating message header
 			let mut reply: Vec<Cow<'_, str>> = vec![];
-			if let Some(subject) = mail.subject() {
-				reply.push(format!("**Subject:** `{}`", subject).into());
-			} else if let Some(thread) = mail.thread_name() {
-				reply.push(format!("**Thread:** `{}`", thread).into());
+			if self.fields.contains("subject") {
+				if let Some(subject) = mail.subject() {
+					reply.push(format!("**Subject:** `{}`", subject).into());
+				} else if let Some(thread) = mail.thread_name() {
+					reply.push(format!("**Thread:** `{}`", thread).into());
+				}
 			}
-			reply.push(format!("**From:** `{}`", headers.from).into());
+			if self.fields.contains("from") {
+				reply.push(format!("**From:** `{}`", headers.from).into());
+			}
+			if self.fields.contains("date") {
+				if let Some(date) = mail.date() {
+					reply.push(format!("**Date:** `{}`", date).into());
+				}
+			}
 			reply.push("".into());
 			let header_size = reply.join("\n").len() + 1;
 
@@ -326,8 +340,9 @@ impl mailin_embedded::Handler for TelegramTransport {
 #[async_std::main]
 async fn main() -> Result<()> {
 	let settings: config::Config = config::Config::builder()
-		.set_default("listen_on", "0.0.0.0:1025").unwrap()
+		.set_default("fields", vec!["date", "from", "subject"]).unwrap()
 		.set_default("hostname", "smtp.2.tg").unwrap()
+		.set_default("listen_on", "0.0.0.0:1025").unwrap()
 		.set_default("unknown", "relay").unwrap()
 		.add_source(config::File::with_name("smtp2tg.toml"))
 		.build()

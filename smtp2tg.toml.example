@@ -6,6 +6,8 @@ listen_on = "0.0.0.0:25"
 # - relay: send them to default one
 # - deny: drop them
 unknown = "relay"
+# default fields to show in message header
+fields = [ "date", "from", "subject" ]
 
 [recipients]
 # there should be default recipient, get's some debug info + mail that we
