@@ -147,21 +147,23 @@ impl TelegramTransport {
 			let mut reply: Vec<Cow<'_, str>> = vec![];
 			if self.fields.contains("subject") {
 				if let Some(subject) = mail.subject() {
-					reply.push(format!("**Subject:** `{}`", subject).into());
+					reply.push(format!("__*Subject:*__ `{}`", subject).into());
 				} else if let Some(thread) = mail.thread_name() {
-					reply.push(format!("**Thread:** `{}`", thread).into());
+					reply.push(format!("__*Thread:*__ `{}`", thread).into());
 				}
 			}
+			let mut short_headers: Vec<Cow<'_, str>> = vec![];
+			// do we need to replace spaces here?
 			if self.fields.contains("from") {
-				reply.push(format!("**From:** `{}`", headers.from).into());
+				short_headers.push(format!("__*From:*__ `{}`", headers.from).into());
 			}
 			if self.fields.contains("date") {
 				if let Some(date) = mail.date() {
-					reply.push(format!("**Date:** `{}`", date).into());
+					short_headers.push(format!("__*Date:*__ `{}`", date).into());
 				}
 			}
-			reply.push("".into());
-			let header_size = reply.join("\n").len() + 1;
+			reply.push(short_headers.join(" ").into());
+			let header_size = reply.join(" ").len() + 1;
 
 			let html_parts = mail.html_body_count();
 			let text_parts = mail.text_body_count();
