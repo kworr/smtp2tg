@@ -11,6 +11,11 @@ use async_std::{
 	io::Error,
 	task,
 };
+use just_getopt::{
+	OptFlags,
+	OptSpecs,
+	OptValueType,
+};
 use mailin_embedded::{
 	Response,
 	response::*,
@@ -35,6 +40,7 @@ use std::{
 		HashMap,
 		HashSet,
 	},
+	path::Path,
 	vec::Vec,
 };
 
@@ -341,15 +347,44 @@ impl mailin_embedded::Handler for TelegramTransport {
 
 #[async_std::main]
 async fn main() -> Result<()> {
+	let specs = OptSpecs::new()
+		.option("help", "h", OptValueType::None)
+		.option("help", "help", OptValueType::None)
+		.option("config", "c", OptValueType::Required)
+		.option("config", "config", OptValueType::Required)
+		.flag(OptFlags::OptionsEverywhere);
+	let mut args = std::env::args();
+	args.next();
+	let parsed = specs.getopt(args);
+	for u in &parsed.unknown {
+		println!("Unknown option: {}", u);
+	}
+	if !(parsed.unknown.is_empty()) || parsed.options_first("help").is_some() {
+		println!("SMTP2TG v{}, (C) 2024 - 2025\n\n\
+			\t-h|--help\tDisplay this help\n\
+			\t-c|-config …\tSet configuration file location.",
+			env!("CARGO_PKG_VERSION"));
+		return Ok(());
+	};
+	let config_file = Path::new(if let Some(path) = parsed.options_value_last("config") {
+		&path[..]
+	} else {
+		"smtp2tg.toml"
+	});
+	if !config_file.exists() {
+		eprintln!("Error: can't read configuration from {:?}", config_file);
+		std::process::exit(1);
+	};
 	let settings: config::Config = config::Config::builder()
 		.set_default("fields", vec!["date", "from", "subject"]).unwrap()
 		.set_default("hostname", "smtp.2.tg").unwrap()
 		.set_default("listen_on", "0.0.0.0:1025").unwrap()
 		.set_default("unknown", "relay").unwrap()
-		.add_source(config::File::with_name("smtp2tg.toml"))
+		.add_source(config::File::from(config_file))
 		.build()
-		.expect("[smtp2tg.toml] there was an error reading config\n\
-			\tplease consult \"smtp2tg.toml.example\" for details");
+		.expect(&format!("[{:?}] there was an error reading config\n\
+			\tplease consult \"smtp2tg.toml.example\" for details",
+			config_file)[..]);
 
 	let listen_on = settings.get_string("listen_on")?;
 	let server_name = settings.get_string("hostname")?;
