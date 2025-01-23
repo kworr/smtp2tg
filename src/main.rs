@@ -8,6 +8,7 @@ use anyhow::{
 	Result,
 };
 use async_std::{
+	fs::metadata,
 	io::Error,
 	task,
 };
@@ -40,6 +41,7 @@ use std::{
 		HashMap,
 		HashSet,
 	},
+	os::unix::fs::PermissionsExt,
 	path::Path,
 	vec::Vec,
 };
@@ -375,6 +377,15 @@ async fn main() -> Result<()> {
 		eprintln!("Error: can't read configuration from {:?}", config_file);
 		std::process::exit(1);
 	};
+	{
+		let meta = metadata(config_file).await?;
+		if (!0o100600 & meta.permissions().mode()) > 0 {
+			eprintln!("Error: other users can read or write config file {:?}\n\
+				File permissions: {:o}",
+				config_file, meta.permissions().mode());
+			std::process::exit(1);
+		}
+	}
 	let settings: config::Config = config::Config::builder()
 		.set_default("fields", vec!["date", "from", "subject"]).unwrap()
 		.set_default("hostname", "smtp.2.tg").unwrap()
