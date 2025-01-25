@@ -2,11 +2,7 @@
 //! messages to specified chats, generally you specify which email address is
 //! available in configuration, everything else is sent to default address.
 
-use anyhow::{
-	anyhow,
-	bail,
-	Result,
-};
+use anyhow::Result;
 use async_std::{
 	fs::metadata,
 	io::Error,
@@ -17,10 +13,12 @@ use just_getopt::{
 	OptSpecs,
 	OptValueType,
 };
+use lazy_static::lazy_static;
 use mailin_embedded::{
 	Response,
 	response::*,
 };
+use regex::Regex;
 use teloxide::{
 	Bot,
 	prelude::{
@@ -34,6 +32,7 @@ use teloxide::{
 		ParseMode::MarkdownV2,
 	},
 };
+use thiserror::Error;
 
 use std::{
 	borrow::Cow,
@@ -45,6 +44,22 @@ use std::{
 	path::Path,
 	vec::Vec,
 };
+
+#[derive(Error, Debug)]
+pub enum MyError {
+	#[error("Failed to parse mail")]
+	BadMail,
+	#[error("Missing default address in recipient table")]
+	NoDefault,
+	#[error("No headers found")]
+	NoHeaders,
+	#[error("No recipient addresses")]
+	NoRecipient,
+	#[error("Failed to extract text from message")]
+	NoText,
+	#[error(transparent)]
+	RequestError(#[from] teloxide::RequestError),
+}
 
 /// `SomeHeaders` object to store data through SMTP session
 #[derive(Clone, Debug)]
@@ -62,6 +77,26 @@ struct TelegramTransport {
 	relay: bool,
 	tg: teloxide::adaptors::DefaultParseMode<teloxide::adaptors::Throttle<Bot>>,
 	fields: HashSet<String>,
+}
+
+lazy_static! {
+	static ref RE_SPECIAL: Regex = Regex::new(r"([\-_*\[\]()~`>#+|{}\.!])").unwrap();
+}
+
+/// Encodes special HTML entities to prevent them interfering with Telegram HTML
+fn encode (text: &str) -> Cow<'_, str> {
+	RE_SPECIAL.replace_all(text, "\\$1")
+}
+
+#[cfg(test)]
+mod tests {
+	use crate::encode;
+
+	#[test]
+	fn check_regex () {
+		let res = encode("-_*[]()~`>#+|{}.!");
+		assert_eq!(res, "\\-\\_\\*\\[\\]\\(\\)\\~\\`\\>\\#\\+\\|\\{\\}\\.\\!");
+	}
 }
 
 impl TelegramTransport {
@@ -112,72 +147,73 @@ impl TelegramTransport {
 	}
 
 	/// Send message to default user, used for debug/log/info purposes
-	async fn debug<'b, S>(&self, msg: S) -> Result<Message>
-	where S: Into<String> {
-		Ok(self.tg.send_message(*self.recipients.get("_").unwrap(), msg).await?)
+	async fn debug <'a, S> (&self, msg: S) -> Result<Message, MyError>
+	where S: Into<&'a str> {
+		let msg = msg.into();
+		Ok(self.tg.send_message(*self.recipients.get("_").ok_or(MyError::NoDefault)?, encode(msg)).await?)
 	}
 
 	/// Send message to specified user
-	async fn send<'b, S>(&self, to: &ChatId, msg: S) -> Result<Message>
+	async fn send <S> (&self, to: &ChatId, msg: S) -> Result<Message, MyError>
 	where S: Into<String> {
 		Ok(self.tg.send_message(*to, msg).await?)
 	}
 
 	/// Attempt to deliver one message
-	async fn relay_mail (&self) -> Result<()> {
+	async fn relay_mail (&self) -> Result<(), MyError> {
 		if let Some(headers) = &self.headers {
 			let mail = mail_parser::MessageParser::new().parse(&self.data)
-				.ok_or(anyhow!("Failed to parse mail"))?;
+				.ok_or(MyError::BadMail)?;
 
 			// Adding all known addresses to recipient list, for anyone else adding default
 			// Also if list is empty also adding default
 			let mut rcpt: HashSet<&ChatId> = HashSet::new();
 			if headers.to.is_empty() {
-				bail!("No recipient addresses.");
+				return Err(MyError::NoRecipient);
 			}
 			for item in &headers.to {
 				match self.recipients.get(item) {
 					Some(addr) => rcpt.insert(addr),
 					None => {
-						self.debug(format!("Recipient [{}] not found\\.", &item)).await?;
+						self.debug(&*format!("Recipient [{}] not found.", &item)).await?;
 						rcpt.insert(self.recipients.get("_")
-							.ok_or(anyhow!("Missing default address in recipient table\\."))?)
+							.ok_or(MyError::NoDefault)?)
 					}
 				};
 			};
 			if rcpt.is_empty() {
-				self.debug("No recipient or envelope address\\.").await?;
+				self.debug("No recipient or envelope address.").await?;
 				rcpt.insert(self.recipients.get("_")
-					.ok_or(anyhow!("Missing default address in recipient table."))?);
+					.ok_or(MyError::NoDefault)?);
 			};
 
 			// prepating message header
-			let mut reply: Vec<Cow<'_, str>> = vec![];
+			let mut reply: Vec<String> = vec![];
 			if self.fields.contains("subject") {
 				if let Some(subject) = mail.subject() {
-					reply.push(format!("__*Subject:*__ `{}`", subject).into());
+					reply.push(format!("__*Subject:*__ `{}`", encode(subject)));
 				} else if let Some(thread) = mail.thread_name() {
-					reply.push(format!("__*Thread:*__ `{}`", thread).into());
+					reply.push(format!("__*Thread:*__ `{}`", encode(thread)));
 				}
 			}
-			let mut short_headers: Vec<Cow<'_, str>> = vec![];
+			let mut short_headers: Vec<String> = vec![];
 			// do we need to replace spaces here?
 			if self.fields.contains("from") {
-				short_headers.push(format!("__*From:*__ `{}`", headers.from).into());
+				short_headers.push(format!("__*From:*__ `{}`", encode(&headers.from[..])));
 			}
 			if self.fields.contains("date") {
 				if let Some(date) = mail.date() {
-					short_headers.push(format!("__*Date:*__ `{}`", date).into());
+					short_headers.push(format!("__*Date:*__ `{}`", date));
 				}
 			}
-			reply.push(short_headers.join(" ").into());
+			reply.push(short_headers.join(" "));
 			let header_size = reply.join(" ").len() + 1;
 
 			let html_parts = mail.html_body_count();
 			let text_parts = mail.text_body_count();
 			let attachments = mail.attachment_count();
 			if html_parts != text_parts {
-				self.debug(format!("Hm, we have {} HTML parts and {} text parts\\.", html_parts, text_parts)).await?;
+				self.debug(&*format!("Hm, we have {} HTML parts and {} text parts.", html_parts, text_parts)).await?;
 			}
 			//let mut html_num = 0;
 			let mut text_num = 0;
@@ -196,7 +232,7 @@ impl TelegramTransport {
 			*/
 			if body == "" && text_parts > 0 {
 				let text = mail.body_text(0)
-					.ok_or(anyhow!("Failed to extract text from message."))?;
+					.ok_or(MyError::NoText)?;
 				if text.len() < 4096 - header_size {
 					body = text;
 					text_num = 1;
@@ -217,12 +253,12 @@ impl TelegramTransport {
 			*/
 			while text_num < text_parts {
 				files_to_send.push(mail.text_part(text_num)
-					.ok_or(anyhow!("Failed to get text part from message"))?);
+					.ok_or(MyError::NoText)?);
 				text_num += 1;
 			}
 			while file_num < attachments {
 				files_to_send.push(mail.attachment(file_num)
-					.ok_or(anyhow!("Failed to get file part from message"))?);
+					.ok_or(MyError::NoText)?);
 				file_num += 1;
 			}
 
@@ -243,7 +279,7 @@ impl TelegramTransport {
 										}
 									},
 									_ => {
-										self.debug("Attachment has bad ContentType header\\.").await?;
+										self.debug("Attachment has bad ContentType header.").await?;
 									},
 								};
 							};
@@ -258,7 +294,7 @@ impl TelegramTransport {
 							.file_name(filename));
 						let item = if first_one {
 							first_one = false;
-							item.caption(&msg).parse_mode(MarkdownV2)
+							item.caption(&msg)
 						} else {
 							item
 						};
@@ -270,13 +306,13 @@ impl TelegramTransport {
 				}
 			}
 		} else {
-			bail!("No headers.");
+			return Err(MyError::NoHeaders);
 		}
 		Ok(())
 	}
 
 	/// Send media to specified user
-	pub async fn sendgroup<M>(&self, to: &ChatId, media: M) -> Result<Vec<Message>>
+	pub async fn sendgroup <M> (&self, to: &ChatId, media: M) -> Result<Vec<Message>, MyError>
 	where M: IntoIterator<Item = InputMedia> {
 		Ok(self.tg.send_media_group(*to, media).await?)
 	}
@@ -321,22 +357,22 @@ impl mailin_embedded::Handler for TelegramTransport {
 	}
 
 	/// Save chunk(?) of data
-	fn data(&mut self, buf: &[u8]) -> Result<(), Error> {
+	fn data (&mut self, buf: &[u8]) -> Result<(), Error> {
 		self.data.append(buf.to_vec().as_mut());
 		Ok(())
 	}
 
 	/// Attempt to send email, return temporary error if that fails
-	fn data_end(&mut self) -> Response {
+	fn data_end (&mut self) -> Response {
 		let mut result = OK;
 		task::block_on(async {
 			// relay mail
 			if let Err(err) = self.relay_mail().await {
 				result = INTERNAL_ERROR;
 				// in case that fails - inform default recipient
-				if let Err(err) = self.debug(format!("Sending emails failed:\n{:?}", err)).await {
+				if let Err(err) = self.debug(&*format!("Sending emails failed:\n{}", err)).await {
 					// in case that also fails - write some logs and bail
-					eprintln!("Failed to contact Telegram:\n{:?}", err);
+					eprintln!("{:?}", err);
 				};
 			};
 		});
@@ -348,7 +384,7 @@ impl mailin_embedded::Handler for TelegramTransport {
 }
 
 #[async_std::main]
-async fn main() -> Result<()> {
+async fn main () -> Result<()> {
 	let specs = OptSpecs::new()
 		.option("help", "h", OptValueType::None)
 		.option("help", "help", OptValueType::None)
