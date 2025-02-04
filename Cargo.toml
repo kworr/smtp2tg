@@ -1,6 +1,6 @@
 [package]
 name = "smtp2tg"
-version = "0.3.5"
+version = "0.3.6"
 authors = [ "arcade" ]
 edition = "2021"
 
