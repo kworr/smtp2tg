@@ -131,7 +131,7 @@ impl TelegramTransport {
 				}
 			},
 			Err(err) => {
-				eprintln!("[smtp2tg.toml] can't get \"unknown\":\n {}\n", err);
+				eprintln!("[smtp2tg.toml] can't get \"unknown\":\n {err:?}\n");
 				panic!("bad setting");
 			},
 		};
@@ -147,9 +147,7 @@ impl TelegramTransport {
 	}
 
 	/// Send message to default user, used for debug/log/info purposes
-	async fn debug <'a, S> (&self, msg: S) -> Result<Message, MyError>
-	where S: Into<&'a str> {
-		let msg = msg.into();
+	async fn debug (&self, msg: &str) -> Result<Message, MyError> {
 		Ok(self.tg.send_message(*self.recipients.get("_").ok_or(MyError::NoDefault)?, encode(msg)).await?)
 	}
 
@@ -175,7 +173,7 @@ impl TelegramTransport {
 				match self.recipients.get(item) {
 					Some(addr) => rcpt.insert(addr),
 					None => {
-						self.debug(&*format!("Recipient [{}] not found.", &item)).await?;
+						self.debug(&format!("Recipient [{item}] not found.")).await?;
 						rcpt.insert(self.recipients.get("_")
 							.ok_or(MyError::NoDefault)?)
 					}
@@ -199,11 +197,11 @@ impl TelegramTransport {
 			let mut short_headers: Vec<String> = vec![];
 			// do we need to replace spaces here?
 			if self.fields.contains("from") {
-				short_headers.push(format!("__*From:*__ `{}`", encode(&headers.from[..])));
+				short_headers.push(format!("__*From:*__ `{}`", encode(&headers.from)));
 			}
 			if self.fields.contains("date") {
 				if let Some(date) = mail.date() {
-					short_headers.push(format!("__*Date:*__ `{}`", date));
+					short_headers.push(format!("__*Date:*__ `{date}`"));
 				}
 			}
 			reply.push(short_headers.join(" "));
@@ -213,7 +211,7 @@ impl TelegramTransport {
 			let text_parts = mail.text_body_count();
 			let attachments = mail.attachment_count();
 			if html_parts != text_parts {
-				self.debug(&*format!("Hm, we have {} HTML parts and {} text parts.", html_parts, text_parts)).await?;
+				self.debug(&format!("Hm, we have {html_parts} HTML parts and {text_parts} text parts.")).await?;
 			}
 			//let mut html_num = 0;
 			let mut text_num = 0;
@@ -370,9 +368,9 @@ impl mailin_embedded::Handler for TelegramTransport {
 			if let Err(err) = self.relay_mail().await {
 				result = INTERNAL_ERROR;
 				// in case that fails - inform default recipient
-				if let Err(err) = self.debug(&*format!("Sending emails failed:\n{}", err)).await {
+				if let Err(err) = self.debug(&format!("Sending emails failed:\n{err:?}")).await {
 					// in case that also fails - write some logs and bail
-					eprintln!("{:?}", err);
+					eprintln!("{err:?}");
 				};
 			};
 		});
@@ -395,7 +393,7 @@ async fn main () -> Result<()> {
 	args.next();
 	let parsed = specs.getopt(args);
 	for u in &parsed.unknown {
-		println!("Unknown option: {}", u);
+		println!("Unknown option: {u}");
 	}
 	if !(parsed.unknown.is_empty()) || parsed.options_first("help").is_some() {
 		println!("SMTP2TG v{}, (C) 2024 - 2025\n\n\
@@ -410,15 +408,14 @@ async fn main () -> Result<()> {
 		"smtp2tg.toml"
 	});
 	if !config_file.exists() {
-		eprintln!("Error: can't read configuration from {:?}", config_file);
+		eprintln!("Error: can't read configuration from {config_file:?}");
 		std::process::exit(1);
 	};
 	{
 		let meta = metadata(config_file).await?;
 		if (!0o100600 & meta.permissions().mode()) > 0 {
-			eprintln!("Error: other users can read or write config file {:?}\n\
-				File permissions: {:o}",
-				config_file, meta.permissions().mode());
+			eprintln!("Error: other users can read or write config file {config_file:?}\n\
+				File permissions: {:o}", meta.permissions().mode());
 			std::process::exit(1);
 		}
 	}
@@ -429,9 +426,8 @@ async fn main () -> Result<()> {
 		.set_default("unknown", "relay").unwrap()
 		.add_source(config::File::from(config_file))
 		.build()
-		.expect(&format!("[{:?}] there was an error reading config\n\
-			\tplease consult \"smtp2tg.toml.example\" for details",
-			config_file)[..]);
+		.unwrap_or_else(|_| panic!("[{config_file:?}] there was an error reading config\n\
+			\tplease consult \"smtp2tg.toml.example\" for details"));
 
 	let listen_on = settings.get_string("listen_on")?;
 	let server_name = settings.get_string("hostname")?;
