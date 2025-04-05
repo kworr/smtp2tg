@@ -11,7 +11,7 @@ config = { version = "0.15", default-features = false, features = [ "toml" ] }
 just-getopt = "1.2.0"
 lazy_static = "1.5.0"
 regex = "1.11.1"
-teloxide = { version = "0.13", features = [ "rustls", "throttle" ] }
+teloxide = { version = "0.13", features = [ "rustls", "throttle" ] } # Rust 1.80
 thiserror = "2.0.11"
 mail-parser = { version = "0.10", features = ["serde", "serde_support"] }
 mailin-embedded = "^0"
