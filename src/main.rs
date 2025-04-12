@@ -8,6 +8,19 @@ use async_std::{
 	io::Error,
 	task,
 };
+use frankenstein::{
+	client_reqwest::Bot,
+	input_file::InputFile,
+	input_media::{InputMedia, InputMediaDocument},
+	methods::{SendDocumentParams, SendMessageParams},
+	response::MethodResponse,
+	types::{
+		ChatId,
+		Message,
+	},
+	AsyncTelegramApi,
+	ParseMode::MarkdownV2,
+};
 use just_getopt::{
 	OptFlags,
 	OptSpecs,
@@ -19,19 +32,6 @@ use mailin_embedded::{
 	response::*,
 };
 use regex::Regex;
-use teloxide::{
-	Bot,
-	prelude::{
-		Requester,
-		RequesterExt,
-	},
-	types::{
-		ChatId,
-		InputMedia,
-		Message,
-		ParseMode::MarkdownV2,
-	},
-};
 use thiserror::Error;
 
 use std::{
@@ -58,7 +58,7 @@ pub enum MyError {
 	#[error("Failed to extract text from message")]
 	NoText,
 	#[error(transparent)]
-	RequestError(#[from] teloxide::RequestError),
+	RequestError(#[from] frankenstein::Error),
 }
 
 /// `SomeHeaders` object to store data through SMTP session
@@ -75,7 +75,7 @@ struct TelegramTransport {
 	headers: Option<SomeHeaders>,
 	recipients: HashMap<String, ChatId>,
 	relay: bool,
-	tg: teloxide::adaptors::DefaultParseMode<teloxide::adaptors::Throttle<Bot>>,
+	tg: Bot,
 	fields: HashSet<String>,
 }
 
@@ -102,15 +102,13 @@ mod tests {
 impl TelegramTransport {
 	/// Initialize API and read configuration
 	fn new(settings: config::Config) -> TelegramTransport {
-		let tg = Bot::new(settings.get_string("api_key")
-			.expect("[smtp2tg.toml] missing \"api_key\" parameter.\n"))
-			.throttle(teloxide::adaptors::throttle::Limits::default())
-			.parse_mode(MarkdownV2);
+		let tg = Bot::new(&settings.get_string("api_key")
+			.expect("[smtp2tg.toml] missing \"api_key\" parameter.\n"));
 		let recipients: HashMap<String, ChatId> = settings.get_table("recipients")
 			.expect("[smtp2tg.toml] missing table \"recipients\".\n")
-			.into_iter().map(|(a, b)| (a, ChatId (b.into_int()
-				.expect("[smtp2tg.toml] \"recipient\" table values should be integers.\n")
-				))).collect();
+			.into_iter().map(|(a, b)| (a, b.into_int()
+				.expect("[smtp2tg.toml] \"recipient\" table values should be integers.\n").into()
+				)).collect();
 		if !recipients.contains_key("_") {
 			eprintln!("[smtp2tg.toml] \"recipient\" table misses \"default_recipient\".\n");
 			panic!("no default recipient");
@@ -147,14 +145,22 @@ impl TelegramTransport {
 	}
 
 	/// Send message to default user, used for debug/log/info purposes
-	async fn debug (&self, msg: &str) -> Result<Message, MyError> {
-		Ok(self.tg.send_message(*self.recipients.get("_").ok_or(MyError::NoDefault)?, encode(msg)).await?)
+	async fn debug (&self, msg: &str) -> Result<MethodResponse<Message>, MyError> {
+		let msg = SendMessageParams::builder()
+			.chat_id(self.recipients.get("_").ok_or(MyError::NoDefault)?.clone())
+			.text(encode(msg))
+			.build();
+		Ok(self.tg.send_message(&msg).await?)
 	}
 
 	/// Send message to specified user
-	async fn send <S> (&self, to: &ChatId, msg: S) -> Result<Message, MyError>
+	async fn send <S> (&self, to: &ChatId, msg: S) -> Result<MethodResponse<Message>, MyError>
 	where S: Into<String> {
-		Ok(self.tg.send_message(*to, msg).await?)
+		let msg = SendMessageParams::builder()
+			.chat_id(to.clone())
+			.text(msg)
+			.build();
+		Ok(self.tg.send_message(&msg).await?)
 	}
 
 	/// Attempt to deliver one message
@@ -290,6 +296,9 @@ impl TelegramTransport {
 						let item = teloxide::types::InputMediaDocument::new(
 							teloxide::types::InputFile::memory(data.to_vec())
 							.file_name(filename));
+						let item = InputMediaDocument::builder()
+							.media(data)
+							.build();
 						let item = if first_one {
 							first_one = false;
 							item.caption(&msg)
