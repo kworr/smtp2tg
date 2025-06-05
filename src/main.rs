@@ -11,7 +11,7 @@ use async_std::{
 use just_getopt::{
 	OptFlags,
 	OptSpecs,
-	OptValueType,
+	OptValue,
 };
 use lazy_static::lazy_static;
 use mailin_embedded::{
@@ -59,6 +59,8 @@ pub enum MyError {
 	NoText,
 	#[error(transparent)]
 	RequestError(#[from] teloxide::RequestError),
+	#[error(transparent)]
+	TryFromIntError(#[from] std::num::TryFromIntError),
 }
 
 /// `SomeHeaders` object to store data through SMTP session
@@ -217,7 +219,7 @@ impl TelegramTransport {
 			let mut text_num = 0;
 			let mut file_num = 0;
 			// let's display first html or text part as body
-			let mut body = "".into();
+			let mut body: Cow<'_, str> = "".into();
 			/*
 			 * actually I don't wanna parse that html stuff
 			if html_parts > 0 {
@@ -228,7 +230,7 @@ impl TelegramTransport {
 				}
 			};
 			*/
-			if body == "" && text_parts > 0 {
+			if body.is_empty() && text_parts > 0 {
 				let text = mail.body_text(0)
 					.ok_or(MyError::NoText)?;
 				if text.len() < 4096 - header_size {
@@ -250,12 +252,12 @@ impl TelegramTransport {
 			}
 			*/
 			while text_num < text_parts {
-				files_to_send.push(mail.text_part(text_num)
+				files_to_send.push(mail.text_part(text_num.try_into()?)
 					.ok_or(MyError::NoText)?);
 				text_num += 1;
 			}
 			while file_num < attachments {
-				files_to_send.push(mail.attachment(file_num)
+				files_to_send.push(mail.attachment(file_num.try_into()?)
 					.ok_or(MyError::NoText)?);
 				file_num += 1;
 			}
@@ -384,10 +386,10 @@ impl mailin_embedded::Handler for TelegramTransport {
 #[async_std::main]
 async fn main () -> Result<()> {
 	let specs = OptSpecs::new()
-		.option("help", "h", OptValueType::None)
-		.option("help", "help", OptValueType::None)
-		.option("config", "c", OptValueType::Required)
-		.option("config", "config", OptValueType::Required)
+		.option("help", "h", OptValue::None)
+		.option("help", "help", OptValue::None)
+		.option("config", "c", OptValue::Required)
+		.option("config", "config", OptValue::Required)
 		.flag(OptFlags::OptionsEverywhere);
 	let mut args = std::env::args();
 	args.next();
