@@ -19,17 +19,20 @@ use mailin_embedded::{
 	response::*,
 };
 use regex::Regex;
-use teloxide::{
-	Bot,
-	prelude::{
-		Requester,
-		RequesterExt,
-	},
+use tgbot::{
+	api::Client,
 	types::{
-		ChatId,
-		InputMedia,
+		ChatPeerId,
+		InputFile,
+		InputFileReader,
+		InputMediaDocument,
+		MediaGroup,
+		MediaGroupItem,
 		Message,
 		ParseMode::MarkdownV2,
+		SendDocument,
+		SendMediaGroup,
+		SendMessage,
 	},
 };
 use thiserror::Error;
@@ -40,6 +43,7 @@ use std::{
 		HashMap,
 		HashSet,
 	},
+	io::Cursor,
 	os::unix::fs::PermissionsExt,
 	path::Path,
 	vec::Vec,
@@ -58,9 +62,13 @@ pub enum MyError {
 	#[error("Failed to extract text from message")]
 	NoText,
 	#[error(transparent)]
-	RequestError(#[from] teloxide::RequestError),
+	RequestError(#[from] tgbot::api::ExecuteError),
 	#[error(transparent)]
 	TryFromIntError(#[from] std::num::TryFromIntError),
+	#[error(transparent)]
+	InputMediaError(#[from] tgbot::types::InputMediaError),
+	#[error(transparent)]
+	MediaGroupError(#[from] tgbot::types::MediaGroupError),
 }
 
 /// `SomeHeaders` object to store data through SMTP session
@@ -70,14 +78,19 @@ struct SomeHeaders {
 	to: Vec<String>,
 }
 
+struct Attachment {
+	data: Cursor<Vec<u8>>,
+	name: String,
+}
+
 /// `TelegramTransport` Central object with TG api and configuration
 #[derive(Clone)]
 struct TelegramTransport {
 	data: Vec<u8>,
 	headers: Option<SomeHeaders>,
-	recipients: HashMap<String, ChatId>,
+	recipients: HashMap<String, ChatPeerId>,
 	relay: bool,
-	tg: teloxide::adaptors::DefaultParseMode<teloxide::adaptors::Throttle<Bot>>,
+	tg: Client,
 	fields: HashSet<String>,
 }
 
@@ -104,13 +117,12 @@ mod tests {
 impl TelegramTransport {
 	/// Initialize API and read configuration
 	fn new(settings: config::Config) -> TelegramTransport {
-		let tg = Bot::new(settings.get_string("api_key")
+		let tg = Client::new(settings.get_string("api_key")
 			.expect("[smtp2tg.toml] missing \"api_key\" parameter.\n"))
-			.throttle(teloxide::adaptors::throttle::Limits::default())
-			.parse_mode(MarkdownV2);
-		let recipients: HashMap<String, ChatId> = settings.get_table("recipients")
+			.expect("Failed to create API.\n");
+		let recipients: HashMap<String, ChatPeerId> = settings.get_table("recipients")
 			.expect("[smtp2tg.toml] missing table \"recipients\".\n")
-			.into_iter().map(|(a, b)| (a, ChatId (b.into_int()
+			.into_iter().map(|(a, b)| (a, ChatPeerId::from(b.into_int()
 				.expect("[smtp2tg.toml] \"recipient\" table values should be integers.\n")
 				))).collect();
 		if !recipients.contains_key("_") {
@@ -150,13 +162,16 @@ impl TelegramTransport {
 
 	/// Send message to default user, used for debug/log/info purposes
 	async fn debug (&self, msg: &str) -> Result<Message, MyError> {
-		Ok(self.tg.send_message(*self.recipients.get("_").ok_or(MyError::NoDefault)?, encode(msg)).await?)
+		self.send(self.recipients.get("_").ok_or(MyError::NoDefault)?, encode(msg)).await
 	}
 
 	/// Send message to specified user
-	async fn send <S> (&self, to: &ChatId, msg: S) -> Result<Message, MyError>
+	async fn send <S> (&self, to: &ChatPeerId, msg: S) -> Result<Message, MyError>
 	where S: Into<String> {
-		Ok(self.tg.send_message(*to, msg).await?)
+		Ok(self.tg.execute(
+			SendMessage::new(*to, msg)
+			.with_parse_mode(MarkdownV2)
+		).await?)
 	}
 
 	/// Attempt to deliver one message
@@ -167,7 +182,7 @@ impl TelegramTransport {
 
 			// Adding all known addresses to recipient list, for anyone else adding default
 			// Also if list is empty also adding default
-			let mut rcpt: HashSet<&ChatId> = HashSet::new();
+			let mut rcpt: HashSet<&ChatPeerId> = HashSet::new();
 			if headers.to.is_empty() {
 				return Err(MyError::NoRecipient);
 			}
@@ -266,9 +281,9 @@ impl TelegramTransport {
 			for chat in rcpt {
 				if !files_to_send.is_empty() {
 					let mut files = vec![];
-					let mut first_one = true;
+					// let mut first_one = true;
 					for chunk in &files_to_send {
-						let data = chunk.contents();
+						let data: Vec<u8> = chunk.contents().to_vec();
 						let mut filename: Option<String> = None;
 						for header in chunk.headers() {
 							if header.name() == "Content-Type" {
@@ -289,18 +304,12 @@ impl TelegramTransport {
 						} else {
 							"Attachment.txt".into()
 						};
-						let item = teloxide::types::InputMediaDocument::new(
-							teloxide::types::InputFile::memory(data.to_vec())
-							.file_name(filename));
-						let item = if first_one {
-							first_one = false;
-							item.caption(&msg)
-						} else {
-							item
-						};
-						files.push(InputMedia::Document(item));
+						files.push(Attachment {
+							data: Cursor::new(data),
+							name: filename,
+						});
 					}
-					self.sendgroup(chat, files).await?;
+					self.sendgroup(chat, files, &msg).await?;
 				} else {
 					self.send(chat, &msg).await?;
 				}
@@ -312,9 +321,39 @@ impl TelegramTransport {
 	}
 
 	/// Send media to specified user
-	pub async fn sendgroup <M> (&self, to: &ChatId, media: M) -> Result<Vec<Message>, MyError>
-	where M: IntoIterator<Item = InputMedia> {
-		Ok(self.tg.send_media_group(*to, media).await?)
+	pub async fn sendgroup (&self, to: &ChatPeerId, media: Vec<Attachment>, msg: &str) -> Result<(), MyError> {
+		if media.len() > 1 {
+			let mut attach = vec![];
+			let mut pos = media.len();
+			for file in media {
+				let mut caption = InputMediaDocument::default();
+				if pos == 1 {
+					caption = caption.with_caption(msg)
+						.with_caption_parse_mode(MarkdownV2);
+				}
+				pos -= 1;
+				attach.push(
+					MediaGroupItem::for_document(
+						InputFile::from(
+							InputFileReader::from(file.data)
+								.with_file_name(file.name)
+						),
+						caption
+					)
+				);
+			}
+			self.tg.execute(SendMediaGroup::new(*to, MediaGroup::new(attach)?)).await?;
+		} else {
+			self.tg.execute(
+				SendDocument::new(
+					*to,
+					InputFileReader::from(media[0].data.clone())
+					.with_file_name(media[0].name.clone())
+				).with_caption(msg)
+				.with_caption_parse_mode(MarkdownV2)
+			).await?;
+		}
+		Ok(())
 	}
 }
 
