@@ -18,7 +18,10 @@ use mailin_embedded::{
 	Response,
 	response::*,
 };
-use regex::Regex;
+use regex::{
+	Regex,
+	escape,
+};
 use tgbot::{
 	api::Client,
 	types::{
@@ -92,10 +95,12 @@ struct TelegramTransport {
 	relay: bool,
 	tg: Client,
 	fields: HashSet<String>,
+	address: Regex,
 }
 
 lazy_static! {
 	static ref RE_SPECIAL: Regex = Regex::new(r"([\-_*\[\]()~`>#+|{}\.!])").unwrap();
+	static ref RE_DOMAIN: Regex = Regex::new(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$").unwrap();
 }
 
 /// Encodes special HTML entities to prevent them interfering with Telegram HTML
@@ -133,6 +138,19 @@ impl TelegramTransport {
 			.expect("[smtp2tg.toml] \"fields\" should be an array")
 			.iter().map(|x| x.clone().into_string().expect("should be strings")));
 		let value = settings.get_string("unknown");
+		let mut domains: HashSet<String> = HashSet::new();
+		let extra_domains = settings.get_array("domains").unwrap();
+		for domain in extra_domains {
+			let domain = domain.to_string().to_lowercase();
+			if RE_DOMAIN.is_match(&domain) {
+				domains.insert(domain);
+			} else {
+				panic!("[smtp2tg.toml] can't check of domains in \"domains\": {domain}");
+			}
+		}
+		let domains = domains.into_iter().map(|s| escape(&s))
+			.collect::<Vec<String>>().join("|");
+		let address = Regex::new(&format!("^(?P<user>[a-z0-9][-a-z0-9])(@({domains}))$")).unwrap();
 		let relay = match value {
 			Ok(value) => {
 				match value.as_str() {
@@ -157,6 +175,7 @@ impl TelegramTransport {
 			relay,
 			tg,
 			fields,
+			address,
 		}
 	}
 
@@ -174,6 +193,24 @@ impl TelegramTransport {
 		).await?)
 	}
 
+	/// Returns id for provided email address
+	fn get_id (&self, name: &str) -> Result<&ChatPeerId, MyError> {
+		// here we need to store String locally to borrow it after
+		let mut link = name;
+		let name: String;
+		if let Some(caps) = self.address.captures(link) {
+			name = caps["name"].to_string();
+			link = &name;
+		}
+		match self.recipients.get(link) {
+			Some(addr) => Ok(addr),
+			None => {
+				self.recipients.get("_")
+					.ok_or(MyError::NoDefault)
+			}
+		}
+	}
+
 	/// Attempt to deliver one message
 	async fn relay_mail (&self) -> Result<(), MyError> {
 		if let Some(headers) = &self.headers {
@@ -187,14 +224,7 @@ impl TelegramTransport {
 				return Err(MyError::NoRecipient);
 			}
 			for item in &headers.to {
-				match self.recipients.get(item) {
-					Some(addr) => rcpt.insert(addr),
-					None => {
-						self.debug(&format!("Recipient [{item}] not found.")).await?;
-						rcpt.insert(self.recipients.get("_")
-							.ok_or(MyError::NoDefault)?)
-					}
-				};
+				rcpt.insert(self.get_id(item)?);
 			};
 			if rcpt.is_empty() {
 				self.debug("No recipient or envelope address.").await?;
@@ -373,9 +403,9 @@ impl mailin_embedded::Handler for TelegramTransport {
 		if self.relay {
 			OK
 		} else {
-			match self.recipients.get(to) {
-				Some(_) => OK,
-				None => {
+			match self.get_id(to) {
+				Ok(_) => OK,
+				Err(_) => {
 					if self.relay {
 						OK
 					} else {
@@ -465,6 +495,7 @@ async fn main () -> Result<()> {
 		.set_default("hostname", "smtp.2.tg").unwrap()
 		.set_default("listen_on", "0.0.0.0:1025").unwrap()
 		.set_default("unknown", "relay").unwrap()
+		.set_default("domains", vec!["localhost", hostname::get()?.to_str().expect("Failed to get current hostname")]).unwrap()
 		.add_source(config::File::from(config_file))
 		.build()
 		.unwrap_or_else(|_| panic!("[{config_file:?}] there was an error reading config\n\

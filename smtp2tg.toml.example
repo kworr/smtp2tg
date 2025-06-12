@@ -1,18 +1,27 @@
 # Telegram API key
 api_key = "YOU_KNOW_WHERE_TO_GET_THIS"
+
 # where to listen on (sockets are not supported since 0.3.0)
 listen_on = "0.0.0.0:25"
+
 # whether we need to handle unknown adresses
 # - relay: send them to default one
 # - deny: drop them
 unknown = "relay"
+
 # default fields to show in message header
 fields = [ "date", "from", "subject" ]
+
+# which domains are allowed in addresses
+# this means that any unqualified recipient "somebody" will also match
+# to "somebody@each_domain"
+domains = [ "localhost", "current.hostname" ]
 
 [recipients]
 # there should be default recipient, get's some debug info + mail that we
 # couldn't deliver (if enabled)
 _ = 1
+
 # make sure you quote emails, as "@" can't go there unquoted. And by default
 # we need FQDNs
 "somebody@example.com" = 1 # user id's are positive
