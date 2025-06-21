@@ -1,3 +1,4 @@
+# vi:ft=toml:
 # Telegram API key
 api_key = "YOU_KNOW_WHERE_TO_GET_THIS"
 
@@ -17,15 +18,15 @@ fields = [ "date", "from", "subject" ]
 # to "somebody@each_domain"
 domains = [ "localhost", "current.hostname" ]
 
-[recipients]
-# there should be default recipient, get's some debug info + mail that we
-# couldn't deliver (if enabled)
-_ = 1
+# default recipient, should be specified
+# still can be a user, channel or group
+default = 0
 
+[recipients]
 # make sure you quote emails, as "@" can't go there unquoted. And by default
 # we need FQDNs
 "somebody@example.com" = 1 # user id's are positive
-"root@example.com" = -1 # group id's are negative
+"root" = -1 # group id's are negative
 
 # to look up chat/group id you can use debug settings in Telegram clients,
 # or some bot like @getidsbot or @RawDataBot
