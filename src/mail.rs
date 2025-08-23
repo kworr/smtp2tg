@@ -19,11 +19,6 @@ use std::{
 	io::Error,
 };
 
-use anyhow::{
-	bail,
-	Context,
-	Result,
-};
 use async_std::{
 	sync::Arc,
 	task,
@@ -40,6 +35,11 @@ use mailin_embedded::{
 use regex::{
 	Regex,
 	escape,
+};
+use stacked_errors::{
+	Result,
+	StackableErr,
+	bail,
 };
 use tgbot::types::ChatPeerId;
 
@@ -82,7 +82,7 @@ impl MailServer {
 			.expect("[smtp2tg.toml] \"fields\" should be an array")
 			.iter().map(|x| x.clone().into_string().expect("should be strings")));
 		let mut domains: HashSet<String> = HashSet::new();
-		let extra_domains = settings.get_array("domains").unwrap();
+		let extra_domains = settings.get_array("domains").stack()?;
 		for domain in extra_domains {
 			let domain = domain.to_string().to_lowercase();
 			if RE_DOMAIN.is_match(&domain) {
@@ -93,7 +93,7 @@ impl MailServer {
 		}
 		let domains = domains.into_iter().map(|s| escape(&s))
 			.collect::<Vec<String>>().join("|");
-		let address = Regex::new(&format!("^(?P<user>[a-z0-9][-a-z0-9])(@({domains}))$")).unwrap();
+		let address = Regex::new(&format!("^(?P<user>[a-z0-9][-a-z0-9])(@({domains}))$")).stack()?;
 		let relay = match settings.get_string("unknown")
 			.context("[smtp2tg.toml] can't get \"unknown\" policy.\n")?.as_str()
 		{
@@ -185,7 +185,7 @@ impl MailServer {
 			/*
 			 * actually I don't wanna parse that html stuff
 			if html_parts > 0 {
-				let text = mail.body_html(0).unwrap();
+				let text = mail.body_html(0).stack()?;
 				if text.len() < 4096 - header_size {
 					body = text;
 					html_num = 1;
@@ -209,17 +209,17 @@ impl MailServer {
 			/*
 			 * let's just skip html parts for now, they just duplicate text?
 			while html_num < html_parts {
-				files_to_send.push(mail.html_part(html_num).unwrap());
+				files_to_send.push(mail.html_part(html_num).stack()?);
 				html_num += 1;
 			}
 			*/
 			while text_num < text_parts {
-				files_to_send.push(mail.text_part(text_num.try_into()?)
+				files_to_send.push(mail.text_part(text_num.try_into().stack()?)
 					.context("Failed to get text part from message.")?);
 				text_num += 1;
 			}
 			while file_num < attachments {
-				files_to_send.push(mail.attachment(file_num.try_into()?)
+				files_to_send.push(mail.attachment(file_num.try_into().stack()?)
 					.context("Failed to get file part from message.")?);
 				file_num += 1;
 			}
@@ -307,7 +307,7 @@ impl mailin_embedded::Handler for MailServer {
 	}
 
 	/// Save chunk(?) of data
-	fn data (&mut self, buf: &[u8]) -> Result<(), Error> {
+	fn data (&mut self, buf: &[u8]) -> std::result::Result<(), Error> {
 		self.data.append(buf.to_vec().as_mut());
 		Ok(())
 	}

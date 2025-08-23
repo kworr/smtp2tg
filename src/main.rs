@@ -11,18 +11,16 @@ mod tests;
 
 use crate::mail::MailServer;
 
-use anyhow::{
-	bail,
-	Context,
-	Result,
-};
-use async_std::{
-	fs::metadata,
-};
+use async_std::fs::metadata;
 use just_getopt::{
 	OptFlags,
 	OptSpecs,
 	OptValue,
+};
+use stacked_errors::{
+	Result,
+	StackableErr,
+	bail,
 };
 
 use std::{
@@ -61,25 +59,25 @@ async fn main () -> Result<()> {
 		bail!("can't read configuration from {config_file:?}");
 	};
 	{
-		let meta = metadata(config_file).await?;
+		let meta = metadata(config_file).await.stack()?;
 		if (!0o100600 & meta.permissions().mode()) > 0 {
 			bail!("other users can read or write config file {config_file:?}\n\
 				File permissions: {:o}", meta.permissions().mode());
 		}
 	}
 	let settings: config::Config = config::Config::builder()
-		.set_default("fields", vec!["date", "from", "subject"]).unwrap()
-		.set_default("hostname", "smtp.2.tg").unwrap()
-		.set_default("listen_on", "0.0.0.0:1025").unwrap()
-		.set_default("unknown", "relay").unwrap()
-		.set_default("domains", vec!["localhost", hostname::get()?.to_str().expect("Failed to get current hostname")]).unwrap()
+		.set_default("fields", vec!["date", "from", "subject"]).stack()?
+		.set_default("hostname", "smtp.2.tg").stack()?
+		.set_default("listen_on", "0.0.0.0:1025").stack()?
+		.set_default("unknown", "relay").stack()?
+		.set_default("domains", vec!["localhost", hostname::get().stack()?.to_str().expect("Failed to get current hostname")]).stack()?
 		.add_source(config::File::from(config_file))
 		.build()
 		.with_context(|| format!("[{config_file:?}] there was an error reading config\n\
 			\tplease consult \"smtp2tg.toml.example\" for details"))?;
 
-	let listen_on = settings.get_string("listen_on")?;
-	let server_name = settings.get_string("hostname")?;
+	let listen_on = settings.get_string("listen_on").stack()?;
+	let server_name = settings.get_string("hostname").stack()?;
 	let core = MailServer::new(settings)?;
 	let mut server = mailin_embedded::Server::new(core);
 

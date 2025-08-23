@@ -9,9 +9,9 @@ use std::{
 	fmt::Debug,
 };
 
-use anyhow::{
-	Context,
+use stacked_errors::{
 	Result,
+	StackableErr,
 };
 use tgbot::{
 	api::Client,
@@ -72,10 +72,10 @@ impl TelegramTransport {
 	/// Send message to specified user
 	pub async fn send <S> (&self, to: &ChatPeerId, msg: S) -> Result<Message>
 	where S: Into<String> + Debug{
-		Ok(self.tg.execute(
+		self.tg.execute(
 			SendMessage::new(*to, msg)
 			.with_parse_mode(MarkdownV2)
-		).await?)
+		).await.stack()
 	}
 
 	/// Send media to specified user
@@ -100,7 +100,7 @@ impl TelegramTransport {
 					)
 				);
 			}
-			self.tg.execute(SendMediaGroup::new(*to, MediaGroup::new(attach)?)).await?;
+			self.tg.execute(SendMediaGroup::new(*to, MediaGroup::new(attach).stack()?)).await.stack()?;
 		} else {
 			self.tg.execute(
 				SendDocument::new(
@@ -109,7 +109,7 @@ impl TelegramTransport {
 					.with_file_name(media[0].name.clone())
 				).with_caption(msg)
 				.with_caption_parse_mode(MarkdownV2)
-			).await?;
+			).await.stack()?;
 		}
 		Ok(())
 	}

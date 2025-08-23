@@ -1,20 +1,20 @@
 [package]
 name = "smtp2tg"
-version = "0.5.0"
+version = "0.5.1"
 authors = [ "arcade" ]
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.86"
 async-std = { version = "1.12.0", features = [ "attributes", "tokio1" ] }
 config = { version = "0.15", default-features = false, features = [ "toml" ] }
 hostname = "0.4.1"
 just-getopt = "2.0.0"
 lazy_static = "1.5.0"
-regex = "1.11.1"
-tgbot = "0.37"
 mail-parser = { version = "0.11", features = ["serde"] }
 mailin-embedded = "^0"
+regex = "1.11.1"
+stacked_errors = "0.7.1"
+tgbot = "0.40"
 
 [profile.release]
 lto = true
