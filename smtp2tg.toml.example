@@ -2,6 +2,9 @@
 # Telegram API key
 api_key = "YOU_KNOW_WHERE_TO_GET_THIS"
 
+# Telegram API gateway (when you are running your own)
+api_gateway = "https://api.telegram.org" # <- note no trailing slash
+
 # where to listen on (sockets are not supported since 0.3.0)
 listen_on = "0.0.0.0:25"
 

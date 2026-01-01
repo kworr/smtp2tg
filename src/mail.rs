@@ -20,6 +20,7 @@ use std::{
 	sync::Arc,
 };
 
+use async_compat::Compat;
 use mailin_embedded::{
 	Response,
 	response::{
@@ -71,10 +72,8 @@ impl MailServer {
 				.context("[smtp2tg.toml] \"recipient\" table values should be integers.\n")?;
 			recipients.insert(name, value);
 		}
-		let default = settings.get_int("default")
-			.context("[smtp2tg.toml] missing \"default\" recipient.\n")?;
 
-		let tg = Arc::new(TelegramTransport::new(api_key, recipients, default)?);
+		let tg = Arc::new(TelegramTransport::new(api_key, recipients, &settings)?);
 		let fields = HashSet::<String>::from_iter(settings.get_array("fields")
 			.expect("[smtp2tg.toml] \"fields\" should be an array")
 			.iter().map(|x| x.clone().into_string().expect("should be strings")));
@@ -155,17 +154,15 @@ impl MailServer {
 					reply.push(format!("__*Thread:*__ `{}`", encode(thread)));
 				}
 			}
-			let mut short_headers: Vec<String> = vec![];
 			// do we need to replace spaces here?
 			if self.fields.contains("from") {
-				short_headers.push(format!("__*From:*__ `{}`", encode(&headers.from)));
+				reply.push(format!("__*From:*__ `{}`", encode(&headers.from)));
 			}
 			if self.fields.contains("date") {
 				if let Some(date) = mail.date() {
-					short_headers.push(format!("__*Date:*__ `{date}`"));
+					reply.push(format!("__*Date:*__ `{date}`"));
 				}
 			}
-			reply.push(short_headers.join(" "));
 			let header_size = reply.join(" ").len() + 1;
 
 			let html_parts = mail.html_body_count();
@@ -312,7 +309,7 @@ impl mailin_embedded::Handler for MailServer {
 	/// Attempt to send email, return temporary error if that fails
 	fn data_end (&mut self) -> Response {
 		let mut result = OK;
-		smol::block_on(async {
+		smol::block_on(Compat::new(async {
 			// relay mail
 			if let Err(err) = self.relay_mail().await {
 				result = INTERNAL_ERROR;
@@ -322,7 +319,7 @@ impl mailin_embedded::Handler for MailServer {
 					eprintln!("{err:?}");
 				};
 			};
-		});
+		}));
 		// clear - just in case
 		self.data = vec![];
 		self.headers = None;

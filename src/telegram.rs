@@ -44,9 +44,14 @@ pub struct TelegramTransport {
 
 impl TelegramTransport {
 
-	pub fn new (api_key: String, recipients: HashMap<String, i64>, default: i64) -> Result<TelegramTransport> {
+	pub fn new (api_key: String, recipients: HashMap<String, i64>, settings: &config::Config) -> Result<TelegramTransport> {
+		let default = settings.get_int("default")
+			.context("[smtp2tg.toml] missing \"default\" recipient.\n")?;
+		let api_gateway = settings.get_string("api_gateway")
+			.context("[smtp2tg.toml] missing \"api_gateway\" destination.\n")?;
 		let tg = Client::new(api_key)
-			.context("Failed to create API.\n")?;
+			.context("Failed to create API.\n")?
+			.with_host(api_gateway);
 		let recipients = recipients.into_iter()
 			.map(|(a, b)| (a, ChatPeerId::from(b))).collect();
 		let default = ChatPeerId::from(default);

@@ -1,10 +1,11 @@
 [package]
 name = "smtp2tg"
-version = "0.5.2"
+version = "0.5.3"
 authors = [ "arcade" ]
 edition = "2021"
 
 [dependencies]
+async-compat = "0.2.5"
 config = { version = "0.15", default-features = false, features = [ "toml" ] }
 hostname = "0.4.1"
 just-getopt = "2.0.0"
@@ -15,6 +16,7 @@ regex = "1.11.1"
 smol = "2.0.2"
 stacked_errors = "0.7.1"
 tgbot = "0.40"
+tokio = { version = "~1", features = [ "macros", "rt" ] }
 
 [profile.release]
 lto = true
