@@ -17,12 +17,9 @@ use std::{
 		HashSet,
 	},
 	io::Error,
+	sync::Arc,
 };
 
-use async_std::{
-	sync::Arc,
-	task,
-};
 use mailin_embedded::{
 	Response,
 	response::{
@@ -315,7 +312,7 @@ impl mailin_embedded::Handler for MailServer {
 	/// Attempt to send email, return temporary error if that fails
 	fn data_end (&mut self) -> Response {
 		let mut result = OK;
-		task::block_on(async {
+		smol::block_on(async {
 			// relay mail
 			if let Err(err) = self.relay_mail().await {
 				result = INTERNAL_ERROR;
