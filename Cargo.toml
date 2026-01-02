@@ -16,7 +16,6 @@ regex = "1.11.1"
 smol = "2.0.2"
 stacked_errors = "0.7.1"
 tgbot = "0.40"
-tokio = { version = "~1", features = [ "macros", "rt" ] }
 
 [profile.release]
 lto = true

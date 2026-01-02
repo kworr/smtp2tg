@@ -11,13 +11,14 @@ mod tests;
 
 use crate::mail::MailServer;
 
-use smol::{
-	fs::metadata,
-};
+use async_compat::Compat;
 use just_getopt::{
 	OptFlags,
 	OptSpecs,
 	OptValue,
+};
+use smol::{
+	fs::metadata,
 };
 use stacked_errors::{
 	Result,
@@ -31,8 +32,15 @@ use std::{
 	path::Path,
 };
 
-#[tokio::main(flavor = "current_thread")]
-async fn main () -> Result<()> {
+fn main () -> Result<()> {
+	smol::block_on(Compat::new(async {
+		async_main().await.unwrap()
+	}));
+
+	Ok(())
+}
+
+async fn async_main () -> Result<()> {
 	let specs = OptSpecs::new()
 		.option("help", "h", OptValue::None)
 		.option("help", "help", OptValue::None)
