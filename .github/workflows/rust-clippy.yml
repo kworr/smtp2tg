@@ -1,11 +1,10 @@
 name: rust-clippy analyze
 
-on:
-  push:
-    branches: [ "master" ]
-  pull_request:
-    # The branches below must be a subset of the branches above
-    branches: [ "master" ]
+on: push
+
+# Make sure CI fails on all warnings, including Clippy lints
+env:
+  RUSTFLAGS: "-Dwarnings"
 
 jobs:
   rust-clippy-test:
@@ -26,7 +25,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Run tests
-        run: cargo test --all-features
+        run: cargo test --all-targets --all-features
 
       - name: Run rust-clippy
-        run: cargo clippy --all-features
+        run: cargo clippy --all-targets --all-features
