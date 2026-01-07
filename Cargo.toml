@@ -15,7 +15,7 @@ mailin-embedded = "^0"
 regex = "1.11.1"
 smol = "2.0.2"
 stacked_errors = "0.7.1"
-tgbot = "0.40"
+tgbot = "0.41"
 
 [profile.release]
 lto = true
