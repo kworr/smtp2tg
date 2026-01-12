@@ -192,7 +192,7 @@ impl MailServer {
 				// - (headers)
 				// - (mail text)
 				// - 6: </pre>
-				if text.len() < 4096 - ( reply.len() + 7 ) {
+				if text.len() < 4096 - ( reply.len() + 6 ) {
 					body = text;
 					text_num = 1;
 				}
