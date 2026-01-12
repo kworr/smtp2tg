@@ -1,12 +1,10 @@
 use crate::{
 	Cursor,
-	telegram::{
-		encode,
-		TelegramTransport,
-	},
+	telegram::TelegramTransport,
 	utils::{
 		Attachment,
 		RE_DOMAIN,
+		validate,
 	},
 };
 
@@ -145,25 +143,30 @@ impl MailServer {
 				rcpt.insert(&self.tg.default);
 			};
 
-			// prepating message header
-			let mut reply: Vec<String> = vec![];
+			// preparing message header
+			let mut reply: Vec<String> = vec!["<blockquote expandable>".into()];
 			if self.fields.contains("subject") {
 				if let Some(subject) = mail.subject() {
-					reply.push(format!("__*Subject:*__ `{}`", encode(subject)));
+					reply.push(format!("<u><i>Subject:</i></u> <code>{}</code>", validate(subject).stack()?));
 				} else if let Some(thread) = mail.thread_name() {
-					reply.push(format!("__*Thread:*__ `{}`", encode(thread)));
+					reply.push(format!("<u><i>Thread:</i></u> <code>{}</code>", validate(thread).stack()?));
 				}
 			}
 			// do we need to replace spaces here?
 			if self.fields.contains("from") {
-				reply.push(format!("__*From:*__ `{}`", encode(&headers.from)));
+				reply.push(format!("<u><i>From:</i></u> <code>{}</code>", validate(&headers.from).stack()?));
 			}
-			if self.fields.contains("date") {
-				if let Some(date) = mail.date() {
-					reply.push(format!("__*Date:*__ `{date}`"));
-				}
+			if self.fields.contains("date")
+				&& let Some(date) = mail.date()
+			{
+				reply.push(format!("<u><i>Date:</i></u> <code>{date}</code>"));
 			}
-			let header_size = reply.join(" ").len() + 1;
+			reply.push("</blockquote><pre>".into());
+			//let header_size = reply.join(" ").len();
+			let mut header_size = 0;
+			for i in reply.iter() {
+				header_size += i.len() + 1;
+			}
 
 			let html_parts = mail.html_body_count();
 			let text_parts = mail.text_body_count();
@@ -189,14 +192,17 @@ impl MailServer {
 			if body.is_empty() && text_parts > 0 {
 				let text = mail.body_text(0)
 					.context("Failed to extract text from message")?;
-				if text.len() < 4096 - header_size {
+				// 7:
+				// - (mail text)
+				// - 1 trailing newline
+				// - 6: </pre>
+				if text.len() < 4096 - ( header_size + 7 ) {
 					body = text;
 					text_num = 1;
 				}
 			};
-			reply.push("```".into());
 			reply.extend(body.lines().map(|x| x.into()));
-			reply.push("```".into());
+			reply.push("</pre>".into());
 
 			// and let's collect all other attachment parts
 			let mut files_to_send = vec![];

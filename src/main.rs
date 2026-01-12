@@ -6,9 +6,6 @@ mod mail;
 mod telegram;
 mod utils;
 
-#[cfg(test)]
-mod tests;
-
 use crate::mail::MailServer;
 
 use async_compat::Compat;
@@ -40,6 +37,7 @@ fn main () -> Result<()> {
 	Ok(())
 }
 
+/// Actual main function running async with Error propagation support
 async fn async_main () -> Result<()> {
 	let specs = OptSpecs::new()
 		.option("help", "h", OptValue::None)

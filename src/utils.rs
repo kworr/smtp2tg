@@ -2,6 +2,11 @@ use crate::Cursor;
 
 use lazy_static::lazy_static;
 use regex::Regex;
+use scraper::Html;
+use stacked_errors::{
+	bail,
+	Result,
+};
 
 lazy_static! {
 	pub static ref RE_SPECIAL: Regex = Regex::new(r"([\-_*\[\]()~`>#+|{}\.!])").unwrap();
@@ -13,4 +18,14 @@ lazy_static! {
 pub struct Attachment {
 	pub data: Cursor<Vec<u8>>,
 	pub name: String,
+}
+
+/// Pass any text here to be validated as HTML, breaks on validation errors
+pub fn validate (text: &str) -> Result<&str> {
+	let fragment = Html::parse_fragment(text);
+	if !fragment.errors.is_empty() {
+		bail!(fragment.errors.join("\n"));
+	} else {
+		Ok(text)
+	}
 }
