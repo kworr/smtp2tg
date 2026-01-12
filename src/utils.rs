@@ -25,7 +25,6 @@ pub fn validate (text: &str) -> Result<&str> {
 	let fragment = Html::parse_fragment(text);
 	if !fragment.errors.is_empty() {
 		bail!(fragment.errors.join("\n"));
-	} else {
-		Ok(text)
 	}
+	Ok(text)
 }

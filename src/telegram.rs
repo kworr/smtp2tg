@@ -1,4 +1,7 @@
-use crate::utils::Attachment;
+use crate::utils::{
+	Attachment,
+	validate,
+};
 
 use std::{
 	collections::HashMap,
@@ -57,7 +60,7 @@ impl TelegramTransport {
 
 	/// Send message to default user, used for debug/log/info purposes
 	pub async fn debug (&self, msg: &str) -> Result<Message> {
-		self.send(&self.default, format!("<pre>{msg}</pre>")).await
+		self.send(&self.default, format!("<pre>{}</pre>", validate(msg).stack()?)).await
 	}
 
 	/// Get recipient by address

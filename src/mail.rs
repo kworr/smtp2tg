@@ -9,7 +9,6 @@ use crate::{
 };
 
 use std::{
-	borrow::Cow,
 	collections::{
 		HashMap,
 		HashSet,
@@ -162,11 +161,7 @@ impl MailServer {
 				reply.push(format!("<u><i>Date:</i></u> <code>{date}</code>"));
 			}
 			reply.push("</blockquote><pre>".into());
-			//let header_size = reply.join(" ").len();
-			let mut header_size = 0;
-			for i in reply.iter() {
-				header_size += i.len() + 1;
-			}
+			let reply = reply.join("\n");
 
 			let html_parts = mail.html_body_count();
 			let text_parts = mail.text_body_count();
@@ -178,7 +173,7 @@ impl MailServer {
 			let mut text_num = 0;
 			let mut file_num = 0;
 			// let's display first html or text part as body
-			let mut body: Cow<'_, str> = "".into();
+			let mut body: String = "".into();
 			/*
 			 * actually I don't wanna parse that html stuff
 			if html_parts > 0 {
@@ -191,18 +186,18 @@ impl MailServer {
 			*/
 			if body.is_empty() && text_parts > 0 {
 				let text = mail.body_text(0)
-					.context("Failed to extract text from message")?;
-				// 7:
+					.context("Failed to extract text from message")?
+					.replace("\r\n", "\n");
+				// 6:
+				// - (headers)
 				// - (mail text)
-				// - 1 trailing newline
 				// - 6: </pre>
-				if text.len() < 4096 - ( header_size + 7 ) {
+				if text.len() < 4096 - ( reply.len() + 7 ) {
 					body = text;
 					text_num = 1;
 				}
 			};
-			reply.extend(body.lines().map(|x| x.into()));
-			reply.push("</pre>".into());
+			let msg = format!("{}{}</pre>", reply, validate(&body).stack()?);
 
 			// and let's collect all other attachment parts
 			let mut files_to_send = vec![];
@@ -224,7 +219,6 @@ impl MailServer {
 				file_num += 1;
 			}
 
-			let msg = reply.join("\n");
 			for chat in rcpt {
 				if !files_to_send.is_empty() {
 					let mut files = vec![];

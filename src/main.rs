@@ -6,6 +6,9 @@ mod mail;
 mod telegram;
 mod utils;
 
+#[cfg(test)]
+mod tests;
+
 use crate::mail::MailServer;
 
 use async_compat::Compat;
@@ -52,7 +55,7 @@ async fn async_main () -> Result<()> {
 		println!("Unknown option: {u}");
 	}
 	if !(parsed.unknown.is_empty()) || parsed.options_first("help").is_some() {
-		println!("SMTP2TG v{}, (C) 2024 - 2025\n\n\
+		println!("SMTP2TG v{}, (C) 2024 - 2026\n\n\
 			\t-h|--help\tDisplay this help\n\
 			\t-c|--config …\tSet configuration file location.",
 			env!("CARGO_PKG_VERSION"));
