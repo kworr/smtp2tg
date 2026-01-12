@@ -1,10 +1,9 @@
 use crate::utils::{
 	Attachment,
-	RE_SPECIAL,
+	validate,
 };
 
 use std::{
-	borrow::Cow,
 	collections::HashMap,
 	fmt::Debug,
 };
@@ -23,17 +22,12 @@ use tgbot::{
 		MediaGroup,
 		MediaGroupItem,
 		Message,
-		ParseMode::MarkdownV2,
+		ParseMode::Html,
 		SendMediaGroup,
 		SendMessage,
 		SendDocument,
 	},
 };
-
-/// Encodes special HTML entities to prevent them interfering with Telegram HTML
-pub fn encode (text: &str) -> Cow<'_, str> {
-	RE_SPECIAL.replace_all(text, "\\$1")
-}
 
 #[derive(Debug)]
 pub struct TelegramTransport {
@@ -43,12 +37,13 @@ pub struct TelegramTransport {
 }
 
 impl TelegramTransport {
-
+	/// Creates new TelegramTransport object.
 	pub fn new (api_key: String, recipients: HashMap<String, i64>, settings: &config::Config) -> Result<TelegramTransport> {
 		let default = settings.get_int("default")
 			.context("[smtp2tg.toml] missing \"default\" recipient.\n")?;
 		let api_gateway = settings.get_string("api_gateway")
 			.context("[smtp2tg.toml] missing \"api_gateway\" destination.\n")?;
+
 		let tg = Client::new(api_key)
 			.context("Failed to create API.\n")?
 			.with_host(api_gateway);
@@ -65,7 +60,7 @@ impl TelegramTransport {
 
 	/// Send message to default user, used for debug/log/info purposes
 	pub async fn debug (&self, msg: &str) -> Result<Message> {
-		self.send(&self.default, encode(msg)).await
+		self.send(&self.default, format!("<pre>{}</pre>", validate(msg).stack()?)).await
 	}
 
 	/// Get recipient by address
@@ -79,7 +74,7 @@ impl TelegramTransport {
 	where S: Into<String> + Debug{
 		self.tg.execute(
 			SendMessage::new(*to, msg)
-			.with_parse_mode(MarkdownV2)
+			.with_parse_mode(Html)
 		).await.stack()
 	}
 
@@ -92,7 +87,7 @@ impl TelegramTransport {
 				let mut caption = InputMediaDocument::default();
 				if pos == 1 {
 					caption = caption.with_caption(msg)
-						.with_caption_parse_mode(MarkdownV2);
+						.with_caption_parse_mode(Html);
 				}
 				pos -= 1;
 				attach.push(
@@ -113,7 +108,7 @@ impl TelegramTransport {
 					InputFileReader::from(media[0].data.clone())
 					.with_file_name(media[0].name.clone())
 				).with_caption(msg)
-				.with_caption_parse_mode(MarkdownV2)
+				.with_caption_parse_mode(Html)
 			).await.stack()?;
 		}
 		Ok(())

@@ -1,8 +1,10 @@
 [package]
 name = "smtp2tg"
-version = "0.5.3"
-authors = [ "arcade" ]
-edition = "2021"
+version = "0.6.0"
+authors = [ "arcade@b1t.name" ]
+edition = "2024"
+license = "0BSD"
+repository = "http://fs.b1t.name/smtp2tg"
 
 [dependencies]
 async-compat = "0.2.5"
@@ -13,9 +15,10 @@ lazy_static = "1.5.0"
 mail-parser = { version = "0.11", features = ["serde"] }
 mailin-embedded = "^0"
 regex = "1.11.1"
+scraper = "0.25.0"
 smol = "2.0.2"
 stacked_errors = "0.7.1"
-tgbot = "0.40"
+tgbot = "0.41"
 
 [profile.release]
 lto = true

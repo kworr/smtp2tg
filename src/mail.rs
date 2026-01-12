@@ -1,17 +1,14 @@
 use crate::{
 	Cursor,
-	telegram::{
-		encode,
-		TelegramTransport,
-	},
+	telegram::TelegramTransport,
 	utils::{
 		Attachment,
 		RE_DOMAIN,
+		validate,
 	},
 };
 
 use std::{
-	borrow::Cow,
 	collections::{
 		HashMap,
 		HashSet,
@@ -145,25 +142,26 @@ impl MailServer {
 				rcpt.insert(&self.tg.default);
 			};
 
-			// prepating message header
-			let mut reply: Vec<String> = vec![];
+			// preparing message header
+			let mut reply: Vec<String> = vec!["<blockquote expandable>".into()];
 			if self.fields.contains("subject") {
 				if let Some(subject) = mail.subject() {
-					reply.push(format!("__*Subject:*__ `{}`", encode(subject)));
+					reply.push(format!("<u><i>Subject:</i></u> <code>{}</code>", validate(subject).stack()?));
 				} else if let Some(thread) = mail.thread_name() {
-					reply.push(format!("__*Thread:*__ `{}`", encode(thread)));
+					reply.push(format!("<u><i>Thread:</i></u> <code>{}</code>", validate(thread).stack()?));
 				}
 			}
 			// do we need to replace spaces here?
 			if self.fields.contains("from") {
-				reply.push(format!("__*From:*__ `{}`", encode(&headers.from)));
+				reply.push(format!("<u><i>From:</i></u> <code>{}</code>", validate(&headers.from).stack()?));
 			}
-			if self.fields.contains("date") {
-				if let Some(date) = mail.date() {
-					reply.push(format!("__*Date:*__ `{date}`"));
-				}
+			if self.fields.contains("date")
+				&& let Some(date) = mail.date()
+			{
+				reply.push(format!("<u><i>Date:</i></u> <code>{date}</code>"));
 			}
-			let header_size = reply.join(" ").len() + 1;
+			reply.push("</blockquote><pre>".into());
+			let reply = reply.join("\n");
 
 			let html_parts = mail.html_body_count();
 			let text_parts = mail.text_body_count();
@@ -175,7 +173,7 @@ impl MailServer {
 			let mut text_num = 0;
 			let mut file_num = 0;
 			// let's display first html or text part as body
-			let mut body: Cow<'_, str> = "".into();
+			let mut body: String = "".into();
 			/*
 			 * actually I don't wanna parse that html stuff
 			if html_parts > 0 {
@@ -188,15 +186,18 @@ impl MailServer {
 			*/
 			if body.is_empty() && text_parts > 0 {
 				let text = mail.body_text(0)
-					.context("Failed to extract text from message")?;
-				if text.len() < 4096 - header_size {
+					.context("Failed to extract text from message")?
+					.replace("\r\n", "\n");
+				// 6:
+				// - (headers)
+				// - (mail text)
+				// - 6: </pre>
+				if text.len() < 4096 - ( reply.len() + 6 ) {
 					body = text;
 					text_num = 1;
 				}
 			};
-			reply.push("```".into());
-			reply.extend(body.lines().map(|x| x.into()));
-			reply.push("```".into());
+			let msg = format!("{}{}</pre>", reply, validate(&body).stack()?);
 
 			// and let's collect all other attachment parts
 			let mut files_to_send = vec![];
@@ -218,7 +219,6 @@ impl MailServer {
 				file_num += 1;
 			}
 
-			let msg = reply.join("\n");
 			for chat in rcpt {
 				if !files_to_send.is_empty() {
 					let mut files = vec![];

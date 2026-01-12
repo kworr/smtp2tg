@@ -40,6 +40,7 @@ fn main () -> Result<()> {
 	Ok(())
 }
 
+/// Actual main function running async with Error propagation support
 async fn async_main () -> Result<()> {
 	let specs = OptSpecs::new()
 		.option("help", "h", OptValue::None)
@@ -54,7 +55,7 @@ async fn async_main () -> Result<()> {
 		println!("Unknown option: {u}");
 	}
 	if !(parsed.unknown.is_empty()) || parsed.options_first("help").is_some() {
-		println!("SMTP2TG v{}, (C) 2024 - 2025\n\n\
+		println!("SMTP2TG v{}, (C) 2024 - 2026\n\n\
 			\t-h|--help\tDisplay this help\n\
 			\t-c|--config …\tSet configuration file location.",
 			env!("CARGO_PKG_VERSION"));
