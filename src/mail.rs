@@ -188,16 +188,17 @@ impl MailServer {
 				let text = mail.body_text(0)
 					.context("Failed to extract text from message")?
 					.replace("\r\n", "\n");
+				let text = validate(&text).stack()?;
 				// 6:
 				// - (headers)
 				// - (mail text)
 				// - 6: </pre>
 				if text.len() < 4096 - ( reply.len() + 6 ) {
-					body = text;
+					body = text.to_string();
 					text_num = 1;
 				}
 			};
-			let msg = format!("{}{}</pre>", reply, validate(&body).stack()?);
+			let msg = format!("{}{}</pre>", reply, body);
 
 			// and let's collect all other attachment parts
 			let mut files_to_send = vec![];
