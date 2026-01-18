@@ -14,7 +14,7 @@ fn check_valid () -> Result<()> {
 }
 
 #[test]
-#[should_panic = "Found special tag while closing generic tag"]
+#[should_panic = "Telegram closing tag found."]
 fn check_invalid () {
 	let html = "<p>Some <b>valid</b> HTML</p></code><a href='http://somewere.com'>Link injection!</a>";
 	let _ = validate(html).unwrap();
