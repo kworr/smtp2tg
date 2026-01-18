@@ -1,6 +1,6 @@
 [package]
 name = "smtp2tg"
-version = "0.6.0"
+version = "0.6.1"
 authors = [ "arcade@b1t.name" ]
 edition = "2024"
 license = "0BSD"
