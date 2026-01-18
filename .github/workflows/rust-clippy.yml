@@ -1,10 +1,5 @@
 name: rust-ci
-on: [ push, pull_request]
-
-# only run one job per commit
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+on: [ pull_request ]
 
 # sccache enable for rust/C builds
 env:
