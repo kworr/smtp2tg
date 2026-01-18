@@ -9,7 +9,7 @@ use stacked_errors::{
 fn check_valid () -> Result<()> {
 	let html = "<p>Some <b>valid</b> HTML</p>";
 	let res = validate(html).stack()?;
-	assert_eq!(res, html);
+	assert_eq!(res, "&lt;p&gt;Some &lt;b&gt;valid&lt;/b&gt; HTML&lt;/p&gt;");
 	Ok(())
 }
 

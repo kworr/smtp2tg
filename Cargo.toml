@@ -10,6 +10,7 @@ repository = "http://fs.b1t.name/smtp2tg"
 async-compat = "0.2.5"
 config = { version = "0.15", default-features = false, features = [ "toml" ] }
 hostname = "0.4.1"
+html-escape = "0.2.13"
 just-getopt = "2.0.0"
 lazy_static = "1.5.0"
 mail-parser = { version = "0.11", features = ["serde"] }

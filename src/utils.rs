@@ -1,5 +1,8 @@
 use crate::Cursor;
 
+use std::borrow::Cow;
+
+use html_escape::encode_text;
 use lazy_static::lazy_static;
 use regex::Regex;
 use stacked_errors::{
@@ -20,10 +23,11 @@ pub struct Attachment {
 }
 
 /// Pass any text here to be validated as not breaking from Telegram preformatted blocks
-pub fn validate (text: &str) -> Result<&str> {
+/// escape all HTML chars afterwards
+pub fn validate (text: &str) -> Result<Cow<'_, str>> {
 	if RE_CLOSING.is_match(text) {
 		bail!("Telegram closing tag found.");
 	} else {
-		Ok(text)
+		Ok(encode_text(text))
 	}
 }
