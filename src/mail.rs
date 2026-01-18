@@ -314,7 +314,7 @@ impl mailin_embedded::Handler for MailServer {
 			if let Err(err) = self.relay_mail().await {
 				result = INTERNAL_ERROR;
 				// in case that fails - inform default recipient
-				if let Err(err) = self.tg.debug(&format!("Sending emails failed:\n{err:?}")).await {
+				if let Err(err) = self.tg.debug(&format!("Sending emails failed:\n{err:}")).await {
 					// in case that also fails - write some logs and bail
 					eprintln!("{err:?}");
 				};
