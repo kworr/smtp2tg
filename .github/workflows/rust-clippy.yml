@@ -1,5 +1,5 @@
 name: rust-ci
-on: [ pull_request ]
+on: [ push ]
 
 # sccache enable for rust/C builds
 env:
