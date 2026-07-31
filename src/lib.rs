@@ -1,4 +1,4 @@
-mod mail;
+pub mod mail;
 mod telegram;
 pub mod utils;
 
