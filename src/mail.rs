@@ -108,9 +108,9 @@ impl MailServer {
 	}
 
 	/// Returns id for provided email address
-	fn get_id (&self, name: &str) -> Result<&ChatPeerId> {
+	pub fn get_id (&self, name_str: &str) -> Result<&ChatPeerId> {
 		// here we need to store String locally to borrow it after
-		let mut link = name;
+		let mut link = name_str;
 		let name: String;
 		if let Some(caps) = self.address.captures(link) {
 			name = caps["name"].to_string();

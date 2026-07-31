@@ -1,0 +1,7 @@
+# Rust compiled stuff
+target
+
+# temporary files
+smtp2tg.log
+smtp2tg.pid
+smtp2tg.toml

@@ -1,6 +1,6 @@
 [package]
 name = "smtp2tg"
-version = "0.6.5"
+version = "0.6.6"
 authors = [ "arcade@b1t.name" ]
 edition = "2024"
 license = "0BSD"
@@ -14,12 +14,20 @@ html-escape = "0.2.13"
 just-getopt = "2.0.0"
 lazy_static = "1.5.0"
 mail-parser = { version = "0.11", features = ["serde"] }
-mailin-embedded = "^0"
+mailin-embedded = "0.8"
 regex = "1.11.1"
 smol = "2.0.2"
 stacked_errors = "0.7.1"
-tgbot = "0.44"
+tgbot = "0.46"
 
 [profile.release]
 lto = true
 codegen-units = 1
+
+# All tests are moved to tests/
+[lib]
+test = false
+
+[[bin]]
+test = false
+name = "smtp2tg"
