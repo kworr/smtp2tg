@@ -28,22 +28,16 @@ fn build_server () -> Result<MailServer> {
 }
 
 #[test]
-fn get_id_returns_configured_recipient_for_full_address () -> Result<()> {
+fn get_id_returns_configured_recipient () -> Result<()> {
 	let server = build_server()?;
-	assert_eq!(*server.get_id("someone@example.com")?, ChatPeerId::from(1));
-	Ok(())
-}
-
-#[test]
-fn get_id_returns_configured_recipient_for_bare_name () -> Result<()> {
-	let server = build_server()?;
-	assert_eq!(*server.get_id("root")?, ChatPeerId::from(-1));
-	Ok(())
-}
-
-#[test]
-fn get_id_falls_back_to_default_for_unknown_address () -> Result<()> {
-	let server = build_server()?;
-	assert_eq!(*server.get_id("unknown@example.com")?, ChatPeerId::from(0));
+	let cases = [
+		("someone@example.com", 1),
+		("someone", 0),
+		("root", -1),
+		("unknown@example.com", 0),
+	];
+	for (email, id) in cases {
+		assert_eq!(*server.get_id(email)?, ChatPeerId::from(id), "email [{email}] expected to return id [{id}]");
+	}
 	Ok(())
 }
