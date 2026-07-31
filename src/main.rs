@@ -8,8 +8,6 @@ use stacked_errors:: Result;
 // main function stub that executes main code from lib
 fn main () -> Result<()> {
 	smol::block_on(Compat::new(async {
-		smtp2tg::async_main().await.unwrap()
-	}));
-
-	Ok(())
+		smtp2tg::async_main().await
+	}))
 }
