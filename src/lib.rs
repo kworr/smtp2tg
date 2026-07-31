@@ -24,7 +24,25 @@ use std::{
 	path::Path,
 };
 
-/// Actual main function running async with Error propagation support
+/// Runs the SMTP-to-Telegram application.
+///
+/// Parses command-line options, loads and validates the configuration, and starts
+/// the embedded SMTP server. Help and unknown options are handled without starting
+/// the server.
+///
+/// # Examples
+///
+/// ```no_run
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// async_main().await?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Returns
+///
+/// `Ok(())` when help is displayed or the server exits successfully; otherwise,
+/// the encountered configuration or startup error.
 pub async fn async_main () -> Result<()> {
 	let specs = OptSpecs::new()
 		.option("help", "h", OptValue::None)

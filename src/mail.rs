@@ -57,7 +57,22 @@ pub struct MailServer {
 }
 
 impl MailServer {
-	/// Initialize API and read configuration
+	/// Creates a mail server from the supplied configuration.
+	///
+	/// The configuration provides Telegram credentials and recipients, displayed
+	/// message fields, accepted domains, and the policy for unknown recipients.
+	///
+	/// # Errors
+	///
+	/// Returns an error when required configuration is missing or invalid.
+	///
+	/// # Examples
+	///
+	/// ```no_run
+	/// let settings = config::Config::default();
+	/// let server = MailServer::new(settings)?;
+	/// # Ok::<(), anyhow::Error>(())
+	/// ```
 	pub fn new(settings: config::Config) -> Result<MailServer> {
 		let api_key = settings.get_string("api_key")
 			.context("[smtp2tg.toml] missing \"api_key\" parameter.\n")?;
@@ -107,7 +122,15 @@ impl MailServer {
 		})
 	}
 
-	/// Returns id for provided email address
+	/// Resolves an email address or Telegram name to a chat peer ID.
+	///
+	/// If the address cannot be resolved, the default Telegram recipient is returned.
+	///
+	/// # Examples
+	///
+	/// ```ignore
+	/// let peer_id = mail_server.get_id("user@example.com")?;
+	/// ```
 	fn get_id (&self, name_str: &str) -> Result<&ChatPeerId> {
 		// here we need to store String locally to borrow it after
 		let mut link = name_str;

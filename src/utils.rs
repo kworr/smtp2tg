@@ -24,8 +24,21 @@ pub struct Attachment {
 	pub name: String,
 }
 
-/// Pass any text here to be validated as not breaking from Telegram preformatted blocks
-/// escape all HTML chars afterwards
+/// Validates text for Telegram preformatted blocks and escapes HTML characters.
+///
+/// Text containing a closing `pre` or `code` tag produces an error; otherwise,
+/// the escaped text is returned.
+///
+/// # Errors
+///
+/// Returns an error when the text contains a closing `pre` or `code` tag.
+///
+/// # Examples
+///
+/// ```
+/// let escaped = validate("<b>Hello</b>").unwrap();
+/// assert_eq!(escaped, "&lt;b&gt;Hello&lt;/b&gt;");
+/// ```
 pub fn validate <'a>(text: &'a str) -> Result<Cow<'a, str>> {
 	if RE_CLOSING.is_match(text) {
 		bail!("Telegram closing tag found.");
