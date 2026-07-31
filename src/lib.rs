@@ -1,8 +1,18 @@
-mod mail;
+pub mod mail;
 mod telegram;
 pub mod utils;
 
+// As we are not actually exporting this lib there would be no local Error's for
+// now, everything will be just .stack()?'ed and propagated like in real bin
+// The lib here is just to separate all tests from main code into tests/
+
 use crate::mail::MailServer;
+
+use std::{
+	io::Cursor,
+	os::unix::fs::PermissionsExt,
+	path::Path,
+};
 
 use just_getopt::{
 	OptFlags,
@@ -16,12 +26,6 @@ use stacked_errors::{
 	Result,
 	StackableErr,
 	bail,
-};
-
-use std::{
-	io::Cursor,
-	os::unix::fs::PermissionsExt,
-	path::Path,
 };
 
 /// Actual main function running async with Error propagation support
@@ -66,7 +70,9 @@ pub async fn async_main () -> Result<()> {
 		.set_default("hostname", "smtp.2.tg").stack()?
 		.set_default("listen_on", "0.0.0.0:1025").stack()?
 		.set_default("unknown", "relay").stack()?
-		.set_default("domains", vec!["localhost", hostname::get().stack()?.to_str().expect("Failed to get current hostname")]).stack()?
+		.set_default("domains", vec!["localhost",
+			hostname::get().expect("Failed to get current hostname")
+			.to_str().expect("Can't convert hostname to string, bad UTF-8?")]).stack()?
 		.add_source(config::File::from(config_file))
 		.build()
 		.with_context(|| format!("[{config_file:?}] there was an error reading config\n\
