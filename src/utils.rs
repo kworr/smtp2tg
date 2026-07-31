@@ -4,7 +4,10 @@ use std::borrow::Cow;
 
 use html_escape::encode_text;
 use lazy_static::lazy_static;
-use regex::Regex;
+use regex::{
+	Regex,
+	RegexBuilder,
+};
 use stacked_errors::{
 	bail,
 	Result,
@@ -12,7 +15,8 @@ use stacked_errors::{
 
 lazy_static! {
 	pub static ref RE_DOMAIN: Regex = Regex::new(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$").expect("Invalid domain regex");
-	pub static ref RE_CLOSING: Regex = Regex::new(r"</[ \t]*(pre|code)[ \t]*>").expect("Invalid cloding tag regex");
+	pub static ref RE_CLOSING: Regex = RegexBuilder::new(r"</[ \t]*(pre|code)[ \t]*>")
+		.case_insensitive(true).build().expect("Invalid closing tag regex");
 }
 
 /// Stores binary attachment data and metadata for Telegram messages.
