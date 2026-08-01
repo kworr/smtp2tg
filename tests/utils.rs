@@ -7,6 +7,7 @@ use smtp2tg::utils::{
 use std::{
 	borrow::Cow,
 	mem::discriminant,
+	thread,
 };
 
 use stacked_errors::Result;
@@ -77,5 +78,31 @@ fn test_regex_domain_behavior() {
 	];
 	for (input, expected) in cases {
 		assert_eq!(RE_DOMAIN.is_match(input), expected, "unexpected match result for {input:?}");
+	}
+}
+
+#[test]
+fn statics_survive_concurrent_first_access_after_lazylock_migration () {
+	// `RE_DOMAIN`/`RE_CLOSING` moved from the `lazy_static!` macro to
+	// `std::sync::LazyLock`. Make sure concurrent, possibly-first-time access
+	// from multiple threads still initializes them safely and consistently
+	// (a regression check for that migration, not for the regex content
+	// itself, which is covered above).
+	let handles: Vec<_> = (0..8).map(|i| {
+		thread::spawn(move || {
+			let domain_ok = RE_DOMAIN.is_match("example.com");
+			let closing_ok = RE_CLOSING.is_match("</pre>");
+			let validated = validate(&format!("thread-{i} <b>data</b>"))
+				.expect("validate should not fail on plain text")
+				.into_owned();
+			(domain_ok, closing_ok, validated)
+		})
+	}).collect();
+
+	for (i, handle) in handles.into_iter().enumerate() {
+		let (domain_ok, closing_ok, validated) = handle.join().expect("worker thread panicked");
+		assert!(domain_ok, "RE_DOMAIN should match \"example.com\" from thread {i}");
+		assert!(closing_ok, "RE_CLOSING should match \"</pre>\" from thread {i}");
+		assert_eq!(validated, format!("thread-{i} &lt;b&gt;data&lt;/b&gt;"));
 	}
 }
