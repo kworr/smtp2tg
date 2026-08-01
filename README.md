@@ -21,7 +21,7 @@ cargo build --release
 
 ### Example configuration
 ```toml
-api_key = "123456789ABCdefGHIjklMNOpq"
+api_key = "replace-with-your-telegram-bot-token"
 api_gateway = "https://api.telegram.org"
 listen_on = "127.0.0.1:1025"
 unknown = "relay"
@@ -58,6 +58,7 @@ Actually not sure which one works...
 ```
 
 ### CLI arguments
+
 | Argument      | Description               | Example               |
 |---------------|---------------------------|-----------------------|
 | `-h`, `--help` | Show help                 | `smtp2tg --help`      |
@@ -88,7 +89,7 @@ chmod 600 smtp2tg.toml
 
 ### Example: Email → Telegram
 **Incoming email:**
-```
+```text
 From: user@example.com
 To: admin@example.com
 Subject: Test
@@ -97,7 +98,7 @@ Hello, world!
 ```
 
 **Telegram message:**
-```
+```html
 <blockquote expandable>
 <u><i>Subject:</i></u> <code>Test</code>
 <u><i>From:</i></u> <code>user@example.com</code>

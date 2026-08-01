@@ -11,6 +11,7 @@ use std::{
 };
 
 use stacked_errors::{
+	bail,
 	Result,
 	StackableErr,
 };
@@ -47,7 +48,8 @@ impl TelegramTransport {
 	/// * `settings` - Additional configuration (API gateway, default chat).
 	///
 	/// # Errors
-	/// Returns an error if API client creation fails.
+	/// Returns an error if configuration values cannot be read or if Telegram
+	/// API client creation fails.
 	pub fn new (api_key: String, recipients: HashMap<String, i64>, settings: &config::Config) -> Result<TelegramTransport> {
 		let default = settings.get_int("default")
 			.context("[smtp2tg.toml] missing \"default\" recipient.\n")?;
@@ -75,6 +77,9 @@ impl TelegramTransport {
 	///
 	/// # Returns
 	/// * `Result<Message>` - Telegram API response.
+	///
+	/// # Errors
+	/// Returns an error if `msg` contains a closing Telegram tag or sending fails.
 	pub async fn debug (&self, msg: &str) -> Result<Message> {
 		self.send(&self.default, format!("<pre>{}</pre>", validate(msg).stack()?)).await
 	}
@@ -86,6 +91,9 @@ impl TelegramTransport {
 	///
 	/// # Returns
 	/// * `Result<&ChatPeerId>` - Chat ID if found.
+	///
+	/// # Errors
+	/// Returns an error if `name` is not configured.
 	pub fn get (&self, name: &str) -> Result<&ChatPeerId> {
 		self.recipients.get(name)
 			.with_context(|| format!("Recipient \"{name}\" not found in configuration"))
@@ -111,7 +119,7 @@ impl TelegramTransport {
 	///
 	/// # Arguments
 	/// * `to` - Target chat ID.
-	/// * `media` - List of attachments.
+	/// * `media` - List of attachments, non-empty.
 	/// * `msg` - Message text (supports HTML formatting).
 	///
 	/// # Returns
@@ -139,6 +147,9 @@ impl TelegramTransport {
 			}
 			self.tg.execute(SendMediaGroup::new(*to, MediaGroup::new(attach).stack()?)).await.stack()?;
 		} else {
+			if media.is_empty() {
+				bail!("At least one attachment is required.");
+			}
 			self.tg.execute(
 				SendDocument::new(
 					*to,
