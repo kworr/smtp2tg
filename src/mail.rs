@@ -34,6 +34,7 @@ use mailin_embedded::{
 };
 use regex::{
 	Regex,
+	RegexBuilder,
 	escape,
 };
 use stacked_errors::{
@@ -55,7 +56,6 @@ struct SomeHeaders {
 pub struct MailServer {
 	data: Vec<u8>,
 	headers: Option<SomeHeaders>,
-	relay: bool,
 	tg: Arc<TelegramTransport>,
 	fields: HashSet<String>,
 	address: Regex,
@@ -80,7 +80,7 @@ impl MailServer {
 		{
 			let value = value.into_int()
 				.context("[smtp2tg.toml] \"recipient\" table values should be integers.\n")?;
-			recipients.insert(name, value);
+			recipients.insert(name.to_lowercase().replace('.', ""), value);
 		}
 
 		let tg = Arc::new(TelegramTransport::new(api_key, recipients, &settings)?);
@@ -99,21 +99,12 @@ impl MailServer {
 		}
 		let domains = domains.into_iter().map(|s| escape(&s))
 			.collect::<Vec<String>>().join("|");
-		let address = Regex::new(&format!("^[a-z0-9][-a-z0-9]*(@({domains}))?$")).stack()?;
-		let relay = match settings.get_string("unknown")
-			.context("[smtp2tg.toml] can't get \"unknown\" policy.\n")?.as_str()
-		{
-			"relay" => true,
-			"deny" => false,
-			_ => {
-				bail!("[smtp2tg.toml] \"unknown\" should be either \"relay\" or \"deny\".\n");
-			},
-		};
+		let address = RegexBuilder::new(&format!("^[a-z0-9][a-z0-9.-]*(@({domains}))?$"))
+			.case_insensitive(true).build().stack()?;
 
 		Ok(MailServer {
 			data: vec!(),
 			headers: None,
-			relay,
 			tg,
 			fields,
 			address,
@@ -146,7 +137,7 @@ impl MailServer {
 			// Adding all known addresses to recipient list, for anyone else adding default
 			// Also if list is empty also adding default
 			let mut rcpt: HashSet<&ChatPeerId> = HashSet::new();
-			if headers.to.is_empty() && !self.relay {
+			if headers.to.is_empty() {
 				bail!("Relaying is disabled, and there's no destination address");
 			}
 			for item in &headers.to {
@@ -292,7 +283,7 @@ impl mailin_embedded::Handler for MailServer {
 
 	/// Verify whether address is deliverable
 	fn rcpt (&mut self, to: &str) -> Response {
-		if self.relay || self.get_id(to).is_ok() {
+		if self.get_id(to).is_ok() {
 			OK
 		} else {
 			NO_MAILBOX

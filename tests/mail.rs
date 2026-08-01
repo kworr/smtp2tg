@@ -14,7 +14,6 @@ fn build_server () -> Result<MailServer> {
 			api_key = "test-api-key"
 			api_gateway = "https://api.telegram.org"
 			default = 0
-			unknown = "relay"
 			fields = ["date", "from", "subject"]
 			domains = ["example.com"]
 
@@ -28,22 +27,32 @@ fn build_server () -> Result<MailServer> {
 }
 
 #[test]
-fn get_id_returns_configured_recipient () -> Result<()> {
+fn get_id_properly_resolves_addresses () -> Result<()> {
 	let server = build_server()?;
 	let cases = [
 		("someone@example.com", 1),
 		("someone", 0),
 		("root", -1),
 		("unknown@example.com", 0),
+		("SOMEONE@example.com", 1),	// uppercase local part
+		("someone@EXAMPLE.COM", 1),	// uppercase domain
+		("some.one@example.com", 1),	// functionally equivalent to skipping '.'
+		("some-one-2", 0),	// Hyphens
 	];
 	for (email, id) in cases {
 		assert_eq!(*server.get_id(email)?, ChatPeerId::from(id), "email [{email}] expected to return id [{id}]");
 	}
 	let cases = [
 		"someone@otherdomain.net",
+		"@example.com",             // empty local part
+		"some@one@example.com",     // more than one '@'
+		"someone@example.com.evil",
+		"someone@example.org",
 	];
 	for email in cases {
-		assert!(server.get_id(email).unwrap_err().to_string().contains("Doesn't look like address from one of our domains."), "email [{email}] expected to fail");
+		let err = server.get_id(email).err()
+			.ok_or_else(|| format!("email [{email}] expected to fail")).stack()?;
+		assert!(err.to_string().contains("Doesn't look like address from one of our domains."));
 	}
 	Ok(())
 }

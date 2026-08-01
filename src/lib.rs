@@ -65,7 +65,6 @@ pub async fn async_main () -> Result<()> {
 		.set_default("fields", vec!["date", "from", "subject"]).stack()?
 		.set_default("hostname", "smtp.2.tg").stack()?
 		.set_default("listen_on", "0.0.0.0:1025").stack()?
-		.set_default("unknown", "relay").stack()?
 		.set_default("domains", vec!["localhost",
 			hostname::get().expect("Failed to get current hostname")
 			.to_str().expect("Can't convert hostname to string, bad UTF-8?")]).stack()?

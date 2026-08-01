@@ -24,7 +24,6 @@ cargo build --release
 api_key = "replace-with-your-telegram-bot-token"
 api_gateway = "https://api.telegram.org"
 listen_on = "127.0.0.1:1025"
-unknown = "relay"
 fields = ["date", "from", "subject"]
 domains = ["example.com", "localhost"]
 
@@ -34,19 +33,6 @@ default = 0
 "admin@example.com" = 12345678
 "alerts@example.com" = -10012345678
 ```
-
-To catch bounces (so they wouldn't stuck in upper mail server) make sure sender
-envelope address is real as required by mail library (actually not sure whether
-this applies to mailin). For example Postfix has to be tweaked like this:
-
-$config_directory/main.cf:
-	smtp_generic_maps = hash:$config_directory/generic
-
-$config_directory/generic:
-	""	postmaster@example.com
-	<>	postmaster@example.com
-
-Actually not sure which one works...
 
 ---
 
