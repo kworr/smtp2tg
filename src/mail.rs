@@ -1,3 +1,8 @@
+//! SMTP server implementation for receiving and processing emails.
+//!
+//! This module handles SMTP connections, email parsing, and forwarding to
+//! Telegram.
+
 use crate::{
 	Cursor,
 	telegram::TelegramTransport,
@@ -29,6 +34,7 @@ use mailin_embedded::{
 };
 use regex::{
 	Regex,
+	RegexBuilder,
 	escape,
 };
 use stacked_errors::{
@@ -50,30 +56,38 @@ struct SomeHeaders {
 pub struct MailServer {
 	data: Vec<u8>,
 	headers: Option<SomeHeaders>,
-	relay: bool,
 	tg: Arc<TelegramTransport>,
 	fields: HashSet<String>,
 	address: Regex,
 }
 
 impl MailServer {
-	/// Initialize API and read configuration
-	pub fn new(settings: config::Config) -> Result<MailServer> {
+	/// Initializes the mail server: sets up the Telegram API client and
+	/// validates all required configuration values.
+	///
+	/// # Arguments
+	/// * `settings` - Parsed application configuration.
+	///
+	/// # Errors
+	/// Returns an error if required configuration values are missing or invalid.
+	/// server fails to start.
+	pub fn new (settings: config::Config) -> Result<MailServer> {
 		let api_key = settings.get_string("api_key")
 			.context("[smtp2tg.toml] missing \"api_key\" parameter.\n")?;
 		let mut recipients = HashMap::new();
 		for (name, value) in settings.get_table("recipients")
-			.expect("[smtp2tg.toml] missing table \"recipients\".\n")
+			.context("[smtp2tg.toml] missing table \"recipients\".\n")?
 		{
 			let value = value.into_int()
 				.context("[smtp2tg.toml] \"recipient\" table values should be integers.\n")?;
-			recipients.insert(name, value);
+			recipients.insert(name.to_lowercase(), value);
 		}
 
 		let tg = Arc::new(TelegramTransport::new(api_key, recipients, &settings)?);
 		let fields = HashSet::<String>::from_iter(settings.get_array("fields")
-			.expect("[smtp2tg.toml] \"fields\" should be an array")
-			.iter().map(|x| x.clone().into_string().expect("should be strings")));
+			.context("[smtp2tg.toml] \"fields\" should be an array")?
+			.iter().map(|x| x.clone().into_string().context("should be strings"))
+			.collect::<Result<Vec<String>>>()?);
 		let mut domains: HashSet<String> = HashSet::new();
 		let extra_domains = settings.get_array("domains").stack()?;
 		for domain in extra_domains {
@@ -81,44 +95,40 @@ impl MailServer {
 			if RE_DOMAIN.is_match(&domain) {
 				domains.insert(domain);
 			} else {
-				panic!("[smtp2tg.toml] can't check of domains in \"domains\": {domain}");
+				bail!("[smtp2tg.toml] can't check domains in \"domains\": {domain}");
 			}
+		}
+		if domains.is_empty() {
+			bail!("No domains, need at least one: default `localhost` would do.");
 		}
 		let domains = domains.into_iter().map(|s| escape(&s))
 			.collect::<Vec<String>>().join("|");
-		let address = Regex::new(&format!("^(?P<user>[a-z0-9][-a-z0-9])(@({domains}))$")).stack()?;
-		let relay = match settings.get_string("unknown")
-			.context("[smtp2tg.toml] can't get \"unknown\" policy.\n")?.as_str()
-		{
-			"relay" => true,
-			"deny" => false,
-			_ => {
-				bail!("[smtp2tg.toml] \"unknown\" should be either \"relay\" or \"deny\".\n");
-			},
-		};
+		let address = RegexBuilder::new(&format!("^[a-z0-9][a-z0-9.-]*(@({domains}))?$"))
+			.case_insensitive(true).build().stack()?;
 
 		Ok(MailServer {
 			data: vec!(),
 			headers: None,
-			relay,
 			tg,
 			fields,
 			address,
 		})
 	}
 
-	/// Returns id for provided email address
-	pub fn get_id (&self, name_str: &str) -> Result<&ChatPeerId> {
-		// here we need to store String locally to borrow it after
-		let mut link = name_str;
-		let name: String;
-		if let Some(caps) = self.address.captures(link) {
-			name = caps["name"].to_string();
-			link = &name;
-		}
-		match self.tg.get(link) {
-			Ok(addr) => Ok(addr),
-			Err(_) => Ok(&self.tg.default),
+	/// Retrieves the Telegram chat ID for a given email address, checks that
+	/// used domain is allowed.
+	///
+	/// # Arguments
+	/// * `name` - Email address or username to look up.
+	///
+	/// # Returns
+	/// * `Result<ChatPeerId>` - Telegram chat ID for the address, or default if
+	///   not found.
+	pub fn get_id (&self, name: &str) -> Result<&ChatPeerId> {
+		if self.address.is_match(name) {
+			Ok(self.tg.get(name).unwrap_or(&self.tg.default))
+		} else {
+			bail!("Doesn't look like address from one of our domains.");
 		}
 	}
 
@@ -131,7 +141,7 @@ impl MailServer {
 			// Adding all known addresses to recipient list, for anyone else adding default
 			// Also if list is empty also adding default
 			let mut rcpt: HashSet<&ChatPeerId> = HashSet::new();
-			if headers.to.is_empty() && !self.relay {
+			if headers.to.is_empty() {
 				bail!("Relaying is disabled, and there's no destination address");
 			}
 			for item in &headers.to {
@@ -263,6 +273,7 @@ impl MailServer {
 	}
 }
 
+/// SMTP handler implementation for mailin-embedded.
 impl mailin_embedded::Handler for MailServer {
 	/// Just deny login auth
 	fn auth_login (&mut self, _username: &str, _password: &str) -> Response {
@@ -276,19 +287,10 @@ impl mailin_embedded::Handler for MailServer {
 
 	/// Verify whether address is deliverable
 	fn rcpt (&mut self, to: &str) -> Response {
-		if self.relay {
+		if self.get_id(to).is_ok() {
 			OK
 		} else {
-			match self.get_id(to) {
-				Ok(_) => OK,
-				Err(_) => {
-					if self.relay {
-						OK
-					} else {
-						NO_MAILBOX
-					}
-				}
-			}
+			NO_MAILBOX
 		}
 	}
 

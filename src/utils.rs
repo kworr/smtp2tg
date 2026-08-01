@@ -1,9 +1,13 @@
+//! Utility functions and types for the application.
+
 use crate::Cursor;
 
-use std::borrow::Cow;
+use std::{
+	borrow::Cow,
+	sync::LazyLock,
+};
 
 use html_escape::encode_text;
-use lazy_static::lazy_static;
 use regex::{
 	Regex,
 	RegexBuilder,
@@ -13,11 +17,13 @@ use stacked_errors::{
 	Result,
 };
 
-lazy_static! {
-	pub static ref RE_DOMAIN: Regex = Regex::new(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$").expect("Invalid domain regex");
-	pub static ref RE_CLOSING: Regex = RegexBuilder::new(r"</[ \t]*(pre|code)[ \t]*>")
-		.case_insensitive(true).build().expect("Invalid closing tag regex");
-}
+pub static RE_DOMAIN: LazyLock<Regex> = LazyLock::new(|| {
+	Regex::new(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$").expect("Invalid domain regex")
+});
+pub static RE_CLOSING: LazyLock<Regex> = LazyLock::new(|| {
+	RegexBuilder::new(r"</[ \t]*(pre|code)[ \t]*>")
+		.case_insensitive(true).build().expect("Invalid closing tag regex")
+});
 
 /// Stores binary attachment data and metadata for Telegram messages.
 /// The data is wrapped in a `Cursor<Vec<u8>>` for efficient streaming,
@@ -28,8 +34,18 @@ pub struct Attachment {
 	pub name: String,
 }
 
-/// Pass any text here to be validated as not breaking from Telegram preformatted blocks
-/// escape all HTML chars afterwards
+/// Validates text to ensure it doesn't break Telegram's preformatted blocks.
+///
+/// Escapes HTML special characters to prevent injection.
+///
+/// # Arguments
+/// * `text` - Text to validate and escape.
+///
+/// # Returns
+/// * `Result<Cow<'a, str>>` - Escaped text or error if invalid.
+///
+/// # Errors
+/// Returns an error if the text contains Telegram closing tags (`</pre>`, `</code>`).
 pub fn validate <'a>(text: &'a str) -> Result<Cow<'a, str>> {
 	if RE_CLOSING.is_match(text) {
 		bail!("Telegram closing tag found.");
