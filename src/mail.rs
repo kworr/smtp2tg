@@ -1,3 +1,8 @@
+//! SMTP server implementation for receiving and processing emails.
+//!
+//! This module handles SMTP connections, email parsing, and forwarding to
+//! Telegram.
+
 use crate::{
 	Cursor,
 	telegram::TelegramTransport,
@@ -57,7 +62,14 @@ pub struct MailServer {
 }
 
 impl MailServer {
-	/// Initialize API and read configuration
+	/// Main asynchronous entry point for the application.
+	///
+	/// Parses command-line arguments, loads configuration, and starts the SMTP
+	/// server.
+	///
+	/// # Errors
+	/// Returns an error if configuration is invalid, files are inaccessible, or
+	/// server fails to start.
 	pub fn new(settings: config::Config) -> Result<MailServer> {
 		let api_key = settings.get_string("api_key")
 			.context("[smtp2tg.toml] missing \"api_key\" parameter.\n")?;
@@ -107,7 +119,15 @@ impl MailServer {
 		})
 	}
 
-	/// Returns id for provided email address
+	/// Retrieves the Telegram chat ID for a given email address, checks that
+	/// used domain is allowed.
+	///
+	/// # Arguments
+	/// * `name_str` - Email address or username to look up.
+	///
+	/// # Returns
+	/// * `Result<ChatPeerId>` - Telegram chat ID for the address, or default if
+	///   not found.
 	pub fn get_id (&self, name: &str) -> Result<&ChatPeerId> {
 		if self.address.is_match(name) {
 			match self.tg.get(name) {
@@ -260,6 +280,7 @@ impl MailServer {
 	}
 }
 
+/// SMTP handler implementation for mailin-embedded.
 impl mailin_embedded::Handler for MailServer {
 	/// Just deny login auth
 	fn auth_login (&mut self, _username: &str, _password: &str) -> Response {

@@ -1,10 +1,15 @@
+//! SMTP-to-Telegram gateway main library.
+//!
+//! This module provides the core functionality for receiving emails via SMTP
+//! and forwarding them to Telegram chats.
+//!
+//! As we are not actually exporting this lib there would be no local Error's
+//! for now, everything will be just .stack()?'ed and propagated like in real
+//! bin The lib here is just to separate all tests from main code into tests/
+
 pub mod mail;
 mod telegram;
 pub mod utils;
-
-// As we are not actually exporting this lib there would be no local Error's for
-// now, everything will be just .stack()?'ed and propagated like in real bin
-// The lib here is just to separate all tests from main code into tests/
 
 use crate::mail::MailServer;
 
@@ -14,11 +19,7 @@ use std::{
 	path::Path,
 };
 
-use just_getopt::{
-	OptFlags,
-	OptSpecs,
-	OptValue,
-};
+use clap::Parser;
 use smol::{
 	fs::metadata,
 };
@@ -28,32 +29,27 @@ use stacked_errors::{
 	bail,
 };
 
-/// Actual main function running async with Error propagation support
+/// SMTP-to-Telegram gateway
+#[derive(Parser, Debug)]
+#[command(name = "smtp2tg")]
+#[command(about = format!("SMTP-to-Telegram gateway v{}, (C) 2024 - 2026", env!("CARGO_PKG_VERSION")), long_about = None)]
+struct Args {
+	/// Set configuration file location
+	#[arg(short, long, default_value = "smtp2tg.toml")]
+	config: String,
+}
+
+/// Main asynchronous entry point for the application.
+///
+/// Parses command-line arguments, loads configuration, and starts the SMTP
+/// server.
+///
+/// # Errors
+/// Returns an error if configuration is invalid, files are inaccessible, or
+/// server fails to start.
 pub async fn async_main () -> Result<()> {
-	let specs = OptSpecs::new()
-		.option("help", "h", OptValue::None)
-		.option("help", "help", OptValue::None)
-		.option("config", "c", OptValue::Required)
-		.option("config", "config", OptValue::Required)
-		.flag(OptFlags::OptionsEverywhere);
-	let mut args = std::env::args();
-	args.next();
-	let parsed = specs.getopt(args);
-	for u in &parsed.unknown {
-		println!("Unknown option: {u}");
-	}
-	if !(parsed.unknown.is_empty()) || parsed.options_first("help").is_some() {
-		println!("SMTP2TG v{}, (C) 2024 - 2026\n\n\
-			\t-h|--help\tDisplay this help\n\
-			\t-c|--config …\tSet configuration file location.",
-			env!("CARGO_PKG_VERSION"));
-		return Ok(());
-	};
-	let config_file = Path::new(if let Some(path) = parsed.options_value_last("config") {
-		&path[..]
-	} else {
-		"smtp2tg.toml"
-	});
+	let args = Args::parse();
+	let config_file = Path::new(&args.config);
 	if !config_file.exists() {
 		bail!("can't read configuration from {config_file:?}");
 	};

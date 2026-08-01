@@ -1,3 +1,5 @@
+//! Telegram API integration for sending messages and attachments.
+
 use crate::utils::{
 	Attachment,
 	validate,
@@ -37,7 +39,15 @@ pub struct TelegramTransport {
 }
 
 impl TelegramTransport {
-	/// Creates new TelegramTransport object.
+	/// Creates a new `TelegramTransport` instance.
+	///
+	/// # Arguments
+	/// * `api_key` - Telegram Bot API token.
+	/// * `recipients` - Mapping of email addresses to Telegram chat IDs.
+	/// * `settings` - Additional configuration (API gateway, default chat).
+	///
+	/// # Errors
+	/// Returns an error if API client creation fails.
 	pub fn new (api_key: String, recipients: HashMap<String, i64>, settings: &config::Config) -> Result<TelegramTransport> {
 		let default = settings.get_int("default")
 			.context("[smtp2tg.toml] missing \"default\" recipient.\n")?;
@@ -58,18 +68,37 @@ impl TelegramTransport {
 		})
 	}
 
-	/// Send message to default user, used for debug/log/info purposes
+	/// Sends a debug message to the default chat.
+	///
+	/// # Arguments
+	/// * `msg` - Message text to send.
+	///
+	/// # Returns
+	/// * `Result<Message>` - Telegram API response.
 	pub async fn debug (&self, msg: &str) -> Result<Message> {
 		self.send(&self.default, format!("<pre>{}</pre>", validate(msg).stack()?)).await
 	}
 
-	/// Get recipient by address
+	/// Retrieves a chat ID by name.
+	///
+	/// # Arguments
+	/// * `name` - Name or email to look up.
+	///
+	/// # Returns
+	/// * `Result<&ChatPeerId>` - Chat ID if found.
 	pub fn get (&self, name: &str) -> Result<&ChatPeerId> {
 		self.recipients.get(name)
 			.with_context(|| format!("Recipient \"{name}\" not found in configuration"))
 	}
 
-	/// Send message to specified user
+	/// Sends a text message to a specified chat.
+	///
+	/// # Arguments
+	/// * `to` - Target chat ID.
+	/// * `msg` - Message text (supports HTML formatting).
+	///
+	/// # Returns
+	/// * `Result<Message>` - Telegram API response.
 	pub async fn send <S> (&self, to: &ChatPeerId, msg: S) -> Result<Message>
 	where S: Into<String> + Debug{
 		self.tg.execute(
@@ -78,7 +107,15 @@ impl TelegramTransport {
 		).await.stack()
 	}
 
-	/// Send media to specified user
+	/// Sends a message with attachments to a specified chat.
+	///
+	/// # Arguments
+	/// * `to` - Target chat ID.
+	/// * `media` - List of attachments.
+	/// * `msg` - Message text (supports HTML formatting).
+	///
+	/// # Returns
+	/// * `Result<()>` - Success or error.
 	pub async fn sendgroup (&self, to: &ChatPeerId, media: Vec<Attachment>, msg: &str) -> Result<()> {
 		if media.len() > 1 {
 			let mut attach = vec![];

@@ -1,6 +1,6 @@
 [package]
 name = "smtp2tg"
-version = "0.6.6"
+version = "0.6.7"
 authors = [ "arcade@b1t.name" ]
 edition = "2024"
 license = "0BSD"
@@ -11,8 +11,7 @@ async-compat = "0.2.5"
 config = { version = "0.15", default-features = false, features = [ "toml" ] }
 hostname = "0.4.1"
 html-escape = "0.2.13"
-just-getopt = "2.0.0"
-lazy_static = "1.5.0"
+clap = { version = "4.6", features = [ "derive" ] }
 mail-parser = { version = "0.11", features = ["serde"] }
 mailin-embedded = "0.8"
 regex = "1.11.1"

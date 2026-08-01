@@ -1,3 +1,5 @@
+//! Utility functions and types for the application.
+
 use crate::Cursor;
 
 use std::{
@@ -32,8 +34,18 @@ pub struct Attachment {
 	pub name: String,
 }
 
-/// Pass any text here to be validated as not breaking from Telegram preformatted blocks
-/// escape all HTML chars afterwards
+/// Validates text to ensure it doesn't break Telegram's preformatted blocks.
+///
+/// Escapes HTML special characters to prevent injection.
+///
+/// # Arguments
+/// * `text` - Text to validate and escape.
+///
+/// # Returns
+/// * `Result<Cow<'a, str>>` - Escaped text or error if invalid.
+///
+/// # Errors
+/// Returns an error if the text contains Telegram closing tags (`</pre>`, `</code>`).
 pub fn validate <'a>(text: &'a str) -> Result<Cow<'a, str>> {
 	if RE_CLOSING.is_match(text) {
 		bail!("Telegram closing tag found.");
