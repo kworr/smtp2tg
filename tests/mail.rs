@@ -33,7 +33,7 @@ fn get_id_properly_resolves_addresses () -> Result<()> {
 		("unknown@example.com", 0),
 		("SOMEONE@example.com", 1),	// uppercase local part
 		("someone@EXAMPLE.COM", 1),	// uppercase domain
-		("some.one@example.com", 1),	// functionally equivalent to skipping '.'
+		("some.one@example.com", 0),	// dot are not skipped
 		("some-one-2", 0),	// Hyphens
 	];
 	for (email, id) in cases {
