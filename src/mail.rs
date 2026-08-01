@@ -62,14 +62,14 @@ pub struct MailServer {
 }
 
 impl MailServer {
-	/// Main asynchronous entry point for the application.
+	/// Initializes the mail server: sets up the Telegram API client and reads
+	/// all required configuration values.
 	///
-	/// Parses command-line arguments, loads configuration, and starts the SMTP
-	/// server.
+	/// # Arguments
+	/// * `settings` - Parsed application configuration.
 	///
 	/// # Errors
-	/// Returns an error if configuration is invalid, files are inaccessible, or
-	/// server fails to start.
+	/// Returns an error if required configuration values are missing or invalid.
 	pub fn new(settings: config::Config) -> Result<MailServer> {
 		let api_key = settings.get_string("api_key")
 			.context("[smtp2tg.toml] missing \"api_key\" parameter.\n")?;
@@ -123,17 +123,14 @@ impl MailServer {
 	/// used domain is allowed.
 	///
 	/// # Arguments
-	/// * `name_str` - Email address or username to look up.
+	/// * `name` - Email address or username to look up.
 	///
 	/// # Returns
 	/// * `Result<ChatPeerId>` - Telegram chat ID for the address, or default if
 	///   not found.
 	pub fn get_id (&self, name: &str) -> Result<&ChatPeerId> {
 		if self.address.is_match(name) {
-			match self.tg.get(name) {
-				Ok(addr) => Ok(addr),
-				Err(_) => Ok(&self.tg.default),
-			}
+			Ok(self.tg.get(name).unwrap_or(&self.tg.default))
 		} else {
 			bail!("Doesn't look like address from one of our domains.");
 		}
@@ -294,19 +291,10 @@ impl mailin_embedded::Handler for MailServer {
 
 	/// Verify whether address is deliverable
 	fn rcpt (&mut self, to: &str) -> Response {
-		if self.relay {
+		if self.relay || self.get_id(to).is_ok() {
 			OK
 		} else {
-			match self.get_id(to) {
-				Ok(_) => OK,
-				Err(_) => {
-					if self.relay {
-						OK
-					} else {
-						NO_MAILBOX
-					}
-				}
-			}
+			NO_MAILBOX
 		}
 	}
 
