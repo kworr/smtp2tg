@@ -34,6 +34,8 @@ default = 0
 "alerts@example.com" = -10012345678
 ```
 
+All recipients are internally lowercased, so `UserName` equals `username`.
+
 ---
 
 ## Usage

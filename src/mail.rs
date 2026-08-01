@@ -80,7 +80,7 @@ impl MailServer {
 		{
 			let value = value.into_int()
 				.context("[smtp2tg.toml] \"recipient\" table values should be integers.\n")?;
-			recipients.insert(name.to_lowercase().replace('.', ""), value);
+			recipients.insert(name.to_lowercase(), value);
 		}
 
 		let tg = Arc::new(TelegramTransport::new(api_key, recipients, &settings)?);
