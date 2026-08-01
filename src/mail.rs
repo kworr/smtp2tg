@@ -86,7 +86,7 @@ impl MailServer {
 		}
 		let domains = domains.into_iter().map(|s| escape(&s))
 			.collect::<Vec<String>>().join("|");
-		let address = Regex::new(&format!("^(?P<user>[a-z0-9][-a-z0-9])(@({domains}))$")).stack()?;
+		let address = Regex::new(&format!("^[a-z0-9][-a-z0-9]*(@({domains}))?$")).stack()?;
 		let relay = match settings.get_string("unknown")
 			.context("[smtp2tg.toml] can't get \"unknown\" policy.\n")?.as_str()
 		{
@@ -108,17 +108,14 @@ impl MailServer {
 	}
 
 	/// Returns id for provided email address
-	pub fn get_id (&self, name_str: &str) -> Result<&ChatPeerId> {
-		// here we need to store String locally to borrow it after
-		let mut link = name_str;
-		let name: String;
-		if let Some(caps) = self.address.captures(link) {
-			name = caps["name"].to_string();
-			link = &name;
-		}
-		match self.tg.get(link) {
-			Ok(addr) => Ok(addr),
-			Err(_) => Ok(&self.tg.default),
+	pub fn get_id (&self, name: &str) -> Result<&ChatPeerId> {
+		if self.address.is_match(name) {
+			match self.tg.get(name) {
+				Ok(addr) => Ok(addr),
+				Err(_) => Ok(&self.tg.default),
+			}
+		} else {
+			bail!("Doesn't look like address from one of our domains.");
 		}
 	}
 

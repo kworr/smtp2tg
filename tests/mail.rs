@@ -39,5 +39,11 @@ fn get_id_returns_configured_recipient () -> Result<()> {
 	for (email, id) in cases {
 		assert_eq!(*server.get_id(email)?, ChatPeerId::from(id), "email [{email}] expected to return id [{id}]");
 	}
+	let cases = [
+		"someone@otherdomain.net",
+	];
+	for email in cases {
+		assert!(server.get_id(email).unwrap_err().to_string().contains("Doesn't look like address from one of our domains."), "email [{email}] expected to fail");
+	}
 	Ok(())
 }
