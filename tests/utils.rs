@@ -9,7 +9,10 @@ use std::{
 	mem::discriminant,
 };
 
-use stacked_errors::Result;
+use stacked_errors::{
+	Result,
+	ensure_eq,
+};
 
 #[test]
 fn test_validate_escaping_behavior () -> Result<()> {
@@ -29,14 +32,14 @@ fn test_validate_escaping_behavior () -> Result<()> {
 	];
 	for (input, expected) in cases {
 		let result = validate(input)?;
-		assert_eq!(&result, expected, "unexpected output for input {input:?}");
-		assert_eq!(discriminant(&result), discriminant(expected), "wrong Cow variant for input {input:?}");
+		ensure_eq!(&result, expected, format!("unexpected output for input {input:?}"));
+		ensure_eq!(discriminant(&result), discriminant(expected), format!("wrong Cow variant for input {input:?}"));
 	}
 	Ok(())
 }
 
 #[test]
-fn test_validate_closing_tag_behavior () {
+fn test_validate_closing_tag_behavior () -> Result<()> {
 	let cases = [
 		("</  pre  >", true),
 		("</\tcode\t>", true),
@@ -53,12 +56,13 @@ fn test_validate_closing_tag_behavior () {
 		("<pre>", false),
 	];
 	for (input, expected) in cases {
-		assert_eq!(RE_CLOSING.is_match(input), expected, "unexpected match result for {input:?}");
+		ensure_eq!(RE_CLOSING.is_match(input), expected, format!("unexpected match result for {input:?}"));
 	}
+	Ok(())
 }
 
 #[test]
-fn test_regex_domain_behavior() {
+fn test_regex_domain_behavior() -> Result<()> {
 	let cases = [
 		("", false),
 		("-example.com", false),
@@ -76,6 +80,7 @@ fn test_regex_domain_behavior() {
 		("sub.example.co.uk", true),
 	];
 	for (input, expected) in cases {
-		assert_eq!(RE_DOMAIN.is_match(input), expected, "unexpected match result for {input:?}");
+		ensure_eq!(RE_DOMAIN.is_match(input), expected, format!("unexpected match result for {input:?}"));
 	}
+	Ok(())
 }

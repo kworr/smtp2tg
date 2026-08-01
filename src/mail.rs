@@ -76,7 +76,7 @@ impl MailServer {
 			.context("[smtp2tg.toml] missing \"api_key\" parameter.\n")?;
 		let mut recipients = HashMap::new();
 		for (name, value) in settings.get_table("recipients")
-			.expect("[smtp2tg.toml] missing table \"recipients\".\n")
+			.context("[smtp2tg.toml] missing table \"recipients\".\n")?
 		{
 			let value = value.into_int()
 				.context("[smtp2tg.toml] \"recipient\" table values should be integers.\n")?;
@@ -85,8 +85,9 @@ impl MailServer {
 
 		let tg = Arc::new(TelegramTransport::new(api_key, recipients, &settings)?);
 		let fields = HashSet::<String>::from_iter(settings.get_array("fields")
-			.expect("[smtp2tg.toml] \"fields\" should be an array")
-			.iter().map(|x| x.clone().into_string().expect("should be strings")));
+			.context("[smtp2tg.toml] \"fields\" should be an array")?
+			.iter().map(|x| x.clone().into_string().context("should be strings"))
+			.collect::<Result<Vec<String>>>()?);
 		let mut domains: HashSet<String> = HashSet::new();
 		let extra_domains = settings.get_array("domains").stack()?;
 		for domain in extra_domains {
@@ -94,8 +95,11 @@ impl MailServer {
 			if RE_DOMAIN.is_match(&domain) {
 				domains.insert(domain);
 			} else {
-				panic!("[smtp2tg.toml] can't check of domains in \"domains\": {domain}");
+				bail!("[smtp2tg.toml] can't check domains in \"domains\": {domain}");
 			}
+		}
+		if domains.is_empty() {
+			bail!("No domains, need at least one: default `localhost` would do.");
 		}
 		let domains = domains.into_iter().map(|s| escape(&s))
 			.collect::<Vec<String>>().join("|");

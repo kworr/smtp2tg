@@ -66,8 +66,8 @@ pub async fn async_main () -> Result<()> {
 		.set_default("hostname", "smtp.2.tg").stack()?
 		.set_default("listen_on", "0.0.0.0:1025").stack()?
 		.set_default("domains", vec!["localhost",
-			hostname::get().expect("Failed to get current hostname")
-			.to_str().expect("Can't convert hostname to string, bad UTF-8?")]).stack()?
+			hostname::get().context("Failed to get current hostname")?
+			.to_str().context("Can't convert hostname to string, bad UTF-8?")?]).stack()?
 		.add_source(config::File::from(config_file))
 		.build()
 		.with_context(|| format!("[{config_file:?}] there was an error reading config\n\
@@ -78,6 +78,7 @@ pub async fn async_main () -> Result<()> {
 	let core = MailServer::new(settings)?;
 	let mut server = mailin_embedded::Server::new(core);
 
+	// TODO: remove unwraps when mailin-embedded bumps with better error handling
 	server.with_name(server_name)
 		.with_ssl(mailin_embedded::SslConfig::None).unwrap()
 		.with_addr(listen_on).unwrap();
