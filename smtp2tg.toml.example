@@ -8,13 +8,8 @@ api_gateway = "https://api.telegram.org" # <- note no trailing slash
 # where to listen on (sockets are not supported since 0.3.0)
 listen_on = "0.0.0.0:25"
 
-# whether we need to handle unknown adresses
-# - relay: send them to default one
-# - deny: drop them
-unknown = "relay"
-
-# default fields to show in message header
-fields = [ "date", "from", "subject" ]
+# default hostname to use when serving requests
+hostname = "smtp2tg"
 
 # which domains are allowed in addresses
 # this means that any unqualified recipient "somebody" will also match
@@ -22,12 +17,15 @@ fields = [ "date", "from", "subject" ]
 domains = [ "localhost", "current.hostname" ]
 
 # default recipient, should be specified
-# still can be a user, channel or group
+# still can be a user, channel or group id
 default = 0
+
+# default fields to show in message header
+fields = [ "date", "from", "subject" ]
 
 [recipients]
 # make sure you quote emails, as "@" can't go there unquoted. And by default
-# we need FQDNs
+# we need FQDNs, also keep in mind emails are case insensitive
 "somebody@example.com" = 1 # user id's are positive
 "root" = -1 # group id's are negative
 

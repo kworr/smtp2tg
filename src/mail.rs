@@ -59,6 +59,7 @@ pub struct MailServer {
 	tg: Arc<TelegramTransport>,
 	fields: HashSet<String>,
 	address: Regex,
+	domains: HashSet<String>,
 }
 
 impl MailServer {
@@ -95,15 +96,16 @@ impl MailServer {
 			if RE_DOMAIN.is_match(&domain) {
 				domains.insert(domain);
 			} else {
-				bail!("[smtp2tg.toml] can't check domains in \"domains\": {domain}");
-			}
-		}
+				bail!("Invalid domain in configuration: '{domain}'\n\
+					Domains must be valid (e.g., 'example.com', 'localhost').\n\
+					Check 'domains' array in smtp2tg.toml.");
+		}	}
 		if domains.is_empty() {
 			bail!("No domains, need at least one: default `localhost` would do.");
 		}
-		let domains = domains.into_iter().map(|s| escape(&s))
+		let re_domains = domains.iter().map(|s| escape(s))
 			.collect::<Vec<String>>().join("|");
-		let address = RegexBuilder::new(&format!("^[a-z0-9][a-z0-9.-]*(@({domains}))?$"))
+		let address = RegexBuilder::new(&format!("^[a-z0-9][a-z0-9.-]*(@({re_domains}))?$"))
 			.case_insensitive(true).build().stack()?;
 
 		Ok(MailServer {
@@ -112,6 +114,7 @@ impl MailServer {
 			tg,
 			fields,
 			address,
+			domains,
 		})
 	}
 
@@ -128,9 +131,8 @@ impl MailServer {
 		if self.address.is_match(name) {
 			Ok(self.tg.get(name).unwrap_or(&self.tg.default))
 		} else {
-			bail!("Doesn't look like address from one of our domains.");
-		}
-	}
+			bail!("Email address {name:?} is not from an allowed domain.");
+	}	}
 
 	/// Attempt to deliver one message
 	async fn relay_mail (&self) -> Result<()> {

@@ -51,15 +51,18 @@ pub async fn async_main () -> Result<()> {
 	let args = Args::parse();
 	let config_file = Path::new(&args.config);
 	if !config_file.exists() {
-		bail!("can't read configuration from {config_file:?}");
+		bail!("Configuration file not found: {config_file:?}\n\
+			Hint: Ensure the file exists and the path is correct.");
 	};
 	{
 		let meta = metadata(config_file).await.stack()?;
 		if (!0o100600 & meta.permissions().mode()) > 0 {
-			bail!("other users can read or write config file {config_file:?}\n\
-				File permissions: {:o}", meta.permissions().mode());
-		}
-	}
+			bail!("Configuration file permissions are insecure {config_file:?}\n\
+				Current permissions: {:o}\n\
+				Required: 0600 (owner read/write only).\n\
+				Fix with: chmod 600 {config_file:?}",
+				meta.permissions().mode());
+	}	}
 	let settings: config::Config = config::Config::builder()
 		.set_default("api_gateway", "https://api.telegram.org").stack()?
 		.set_default("fields", vec!["date", "from", "subject"]).stack()?
@@ -70,8 +73,11 @@ pub async fn async_main () -> Result<()> {
 			.to_str().context("Can't convert hostname to string, bad UTF-8?")?]).stack()?
 		.add_source(config::File::from(config_file))
 		.build()
-		.with_context(|| format!("[{config_file:?}] there was an error reading config\n\
-			\tplease consult \"smtp2tg.toml.example\" for details"))?;
+		.with_context(|| format!(
+			"Failed to parse configuration file: {config_file:?}\n\
+			Check syntax against smtp2tg.toml.example.\n\
+			Common issues: missing quotes, trailing commas, or invalid types."
+		))?;
 
 	let listen_on = settings.get_string("listen_on").stack()?;
 	let server_name = settings.get_string("hostname").stack()?;

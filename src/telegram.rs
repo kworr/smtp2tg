@@ -96,7 +96,7 @@ impl TelegramTransport {
 	/// Returns an error if `name` is not configured.
 	pub fn get (&self, name: &str) -> Result<&ChatPeerId> {
 		self.recipients.get(&name.to_lowercase())
-			.with_context(|| format!("Recipient \"{name}\" not found in configuration"))
+			.with_context(|| format!("Recipient {name:?} not found in configuration"))
 	}
 
 	/// Sends a text message to a specified chat.
