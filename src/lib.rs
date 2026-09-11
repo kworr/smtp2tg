@@ -39,14 +39,17 @@ struct Args {
 	config: String,
 }
 
-/// Main asynchronous entry point for the application.
+/// Runs the gateway using the configuration selected on the command line.
 ///
-/// Parses command-line arguments, loads configuration, and starts the SMTP
-/// server.
+/// The configuration file must use owner-only permissions. Once configured,
+/// the SMTP server runs until it stops or encounters an error.
 ///
 /// # Errors
-/// Returns an error if configuration is invalid, files are inaccessible, or
-/// server fails to start.
+/// Returns an error if the configuration file is missing, inaccessible,
+/// insecure, malformed, or contains invalid required settings.
+///
+/// # Panics
+/// Panics if configuring or serving the SMTP server fails.
 pub async fn async_main () -> Result<()> {
 	let args = Args::parse();
 	let config_file = Path::new(&args.config);

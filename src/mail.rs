@@ -70,7 +70,6 @@ impl MailServer {
 	///
 	/// # Errors
 	/// Returns an error if required configuration values are missing or invalid.
-	/// server fails to start.
 	pub fn new (settings: config::Config) -> Result<MailServer> {
 		let api_key = settings.get_string("api_key")
 			.context("[smtp2tg.toml] missing \"api_key\" parameter.\n")?;
@@ -116,15 +115,14 @@ impl MailServer {
 		})
 	}
 
-	/// Retrieves the Telegram chat ID for a given email address, checks that
-	/// used domain is allowed.
+	/// Resolves an allowed recipient to its configured Telegram chat.
 	///
-	/// # Arguments
-	/// * `name` - Email address or username to look up.
+	/// Matching is case-insensitive. A valid but unconfigured recipient resolves
+	/// to the default chat.
 	///
-	/// # Returns
-	/// * `Result<ChatPeerId>` - Telegram chat ID for the address, or default if
-	///   not found.
+	/// # Errors
+	/// Returns an error if `name` is not a local name or an address for one of
+	/// the configured domains.
 	pub fn get_id (&self, name: &str) -> Result<&ChatPeerId> {
 		if self.address.is_match(name) {
 			Ok(self.tg.get(name).unwrap_or(&self.tg.default))

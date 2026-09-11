@@ -103,15 +103,15 @@ impl TelegramTransport {
 		).await.stack()
 	}
 
-	/// Sends a message with attachments to a specified chat.
+	/// Sends attachments to a chat as a document or media group.
 	///
-	/// # Arguments
-	/// * `to` - Target chat ID.
-	/// * `media` - List of attachments, non-empty.
-	/// * `msg` - Message text (supports HTML formatting).
+	/// For one attachment, `msg` is the document caption. For multiple
+	/// attachments, it is the final document's caption. Captions are interpreted
+	/// as Telegram HTML.
 	///
-	/// # Returns
-	/// * `Result<()>` - Success or error.
+	/// # Errors
+	/// Returns an error if `media` is empty, cannot form a valid media group, or
+	/// if the Telegram request fails.
 	pub async fn sendgroup (&self, to: &ChatPeerId, media: Vec<Attachment>, msg: &str) -> Result<()> {
 		if media.len() > 1 {
 			let mut attach = vec![];
