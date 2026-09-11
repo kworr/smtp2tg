@@ -59,7 +59,6 @@ pub struct MailServer {
 	tg: Arc<TelegramTransport>,
 	fields: HashSet<String>,
 	address: Regex,
-	domains: HashSet<String>,
 }
 
 impl MailServer {
@@ -114,7 +113,6 @@ impl MailServer {
 			tg,
 			fields,
 			address,
-			domains,
 		})
 	}
 

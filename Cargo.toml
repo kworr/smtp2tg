@@ -19,10 +19,6 @@ smol = "2.0.2"
 stacked_errors = "0.8"
 tgbot = "0.48"
 
-[profile.release]
-lto = true
-codegen-units = 1
-
 # All tests are moved to tests/
 [lib]
 test = false
