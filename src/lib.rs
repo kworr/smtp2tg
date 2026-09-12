@@ -39,18 +39,22 @@ struct Args {
 	config: String,
 }
 
-/// Main asynchronous entry point for the application.
+/// Main asynchronous entry point for the application. Runs the gateway using
+/// the configuration selected on the command line.
 ///
-/// Parses command-line arguments, loads configuration, and starts the SMTP
-/// server.
+/// The configuration file must use owner-only permissions. Once configured,
+/// the SMTP server runs until it stops or encounters an error.
 ///
 /// # Errors
-/// Returns an error if configuration is invalid, files are inaccessible, or
-/// server fails to start.
+/// Returns an error if the configuration file is missing, inaccessible,
+/// insecure, malformed, or contains invalid required settings.
+///
+/// # Panics
+/// Panics if configuring or serving the SMTP server fails.
 pub async fn async_main () -> Result<()> {
 	let args = Args::parse();
 	let config_file = Path::new(&args.config);
-	if !config_file.exists() {
+	if !config_file.try_exists().stack()? {
 		bail!("Configuration file not found: {config_file:?}\n\
 			Hint: Ensure the file exists and the path is correct.");
 	};
@@ -76,7 +80,7 @@ pub async fn async_main () -> Result<()> {
 		.with_context(|| format!(
 			"Failed to parse configuration file: {config_file:?}\n\
 			Check syntax against smtp2tg.toml.example.\n\
-			Common issues: missing quotes, trailing commas, or invalid types."
+			Common issues: missing quotes, trailing commas in inline tables, or invalid types."
 		))?;
 
 	let listen_on = settings.get_string("listen_on").stack()?;

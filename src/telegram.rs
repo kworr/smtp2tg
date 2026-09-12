@@ -111,7 +111,8 @@ impl TelegramTransport {
 	/// * `msg` - Message text (supports HTML formatting).
 	///
 	/// # Returns
-	/// * `Result<()>` - Success or error.
+	/// * `Result<()>` - fails if `media` is empty, problems forming media
+	/// group, request fails.
 	pub async fn sendgroup (&self, to: &ChatPeerId, media: Vec<Attachment>, msg: &str) -> Result<()> {
 		if media.len() > 1 {
 			let mut attach = vec![];

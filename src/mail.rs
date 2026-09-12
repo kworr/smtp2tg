@@ -70,7 +70,6 @@ impl MailServer {
 	///
 	/// # Errors
 	/// Returns an error if required configuration values are missing or invalid.
-	/// server fails to start.
 	pub fn new (settings: config::Config) -> Result<MailServer> {
 		let api_key = settings.get_string("api_key")
 			.context("[smtp2tg.toml] missing \"api_key\" parameter.\n")?;
