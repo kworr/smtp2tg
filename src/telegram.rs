@@ -18,17 +18,7 @@ use stacked_errors::{
 use tgbot::{
 	api::Client,
 	types::{
-		ChatPeerId,
-		InputFile,
-		InputFileReader,
-		InputMediaDocument,
-		MediaGroup,
-		MediaGroupItem,
-		Message,
-		ParseMode::Html,
-		SendMediaGroup,
-		SendMessage,
-		SendDocument,
+		ChatPeerId, InputFile, InputFileReader, InputMediaDocument, InputText, MediaGroup, MediaGroupItem, Message, ParseMode::Html, SendDocument, SendMediaGroup, SendMessage
 	},
 };
 
@@ -81,7 +71,7 @@ impl TelegramTransport {
 	/// # Errors
 	/// Returns an error if `msg` contains a closing Telegram tag or sending fails.
 	pub async fn debug (&self, msg: &str) -> Result<Message> {
-		self.send(&self.default, format!("<pre>{}</pre>", validate(msg).stack()?)).await
+		self.send(&self.default, &format!("<pre>{}</pre>", validate(msg).stack()?)).await
 	}
 
 	/// Retrieves a chat ID by name.
@@ -96,7 +86,7 @@ impl TelegramTransport {
 	/// Returns an error if `name` is not configured.
 	pub fn get (&self, name: &str) -> Result<&ChatPeerId> {
 		self.recipients.get(&name.to_lowercase())
-			.with_context(|| format!("Recipient \"{name}\" not found in configuration"))
+			.with_context(|| format!("Recipient {name:?} not found in configuration"))
 	}
 
 	/// Sends a text message to a specified chat.
@@ -107,11 +97,9 @@ impl TelegramTransport {
 	///
 	/// # Returns
 	/// * `Result<Message>` - Telegram API response.
-	pub async fn send <S> (&self, to: &ChatPeerId, msg: S) -> Result<Message>
-	where S: Into<String> + Debug{
+	pub async fn send (&self, to: &ChatPeerId, msg: &str) -> Result<Message> {
 		self.tg.execute(
-			SendMessage::new(*to, msg)
-			.with_parse_mode(Html)
+			SendMessage::new(*to, InputText::from(msg).with_format(Html))
 		).await.stack()
 	}
 
@@ -123,27 +111,25 @@ impl TelegramTransport {
 	/// * `msg` - Message text (supports HTML formatting).
 	///
 	/// # Returns
-	/// * `Result<()>` - Success or error.
+	/// * `Result<()>` - fails if `media` is empty, problems forming media
+	///   group, request fails.
 	pub async fn sendgroup (&self, to: &ChatPeerId, media: Vec<Attachment>, msg: &str) -> Result<()> {
 		if media.len() > 1 {
 			let mut attach = vec![];
 			let mut pos = media.len();
 			for file in media {
-				let mut caption = InputMediaDocument::default();
-				if pos == 1 {
-					caption = caption.with_caption(msg)
-						.with_caption_parse_mode(Html);
-				}
-				pos -= 1;
-				attach.push(
-					MediaGroupItem::for_document(
-						InputFile::from(
-							InputFileReader::from(file.data)
-								.with_file_name(file.name)
-						),
-						caption
+				let mut doc = InputMediaDocument::from(
+					InputFile::from(
+						InputFileReader::from(file.data)
+							.with_file_name(file.name)
 					)
 				);
+				if pos == 1 {
+					doc = doc.with_caption(InputText::from(msg)
+						.with_format(Html));
+				}
+				pos -= 1;
+				attach.push(MediaGroupItem::from(doc));
 			}
 			self.tg.execute(SendMediaGroup::new(*to, MediaGroup::new(attach).stack()?)).await.stack()?;
 		} else {
@@ -154,9 +140,9 @@ impl TelegramTransport {
 				SendDocument::new(
 					*to,
 					InputFileReader::from(media[0].data.clone())
-					.with_file_name(media[0].name.clone())
-				).with_caption(msg)
-				.with_caption_parse_mode(Html)
+						.with_file_name(media[0].name.clone())
+				).with_caption(InputText::from(msg)
+					.with_format(Html))
 			).await.stack()?;
 		}
 		Ok(())

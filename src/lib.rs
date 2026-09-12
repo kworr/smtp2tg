@@ -39,27 +39,34 @@ struct Args {
 	config: String,
 }
 
-/// Main asynchronous entry point for the application.
+/// Main asynchronous entry point for the application. Runs the gateway using
+/// the configuration selected on the command line.
 ///
-/// Parses command-line arguments, loads configuration, and starts the SMTP
-/// server.
+/// The configuration file must use owner-only permissions. Once configured,
+/// the SMTP server runs until it stops or encounters an error.
 ///
 /// # Errors
-/// Returns an error if configuration is invalid, files are inaccessible, or
-/// server fails to start.
+/// Returns an error if the configuration file is missing, inaccessible,
+/// insecure, malformed, or contains invalid required settings.
+///
+/// # Panics
+/// Panics if configuring or serving the SMTP server fails.
 pub async fn async_main () -> Result<()> {
 	let args = Args::parse();
 	let config_file = Path::new(&args.config);
-	if !config_file.exists() {
-		bail!("can't read configuration from {config_file:?}");
+	if !config_file.try_exists().stack()? {
+		bail!("Configuration file not found: {config_file:?}\n\
+			Hint: Ensure the file exists and the path is correct.");
 	};
 	{
 		let meta = metadata(config_file).await.stack()?;
 		if (!0o100600 & meta.permissions().mode()) > 0 {
-			bail!("other users can read or write config file {config_file:?}\n\
-				File permissions: {:o}", meta.permissions().mode());
-		}
-	}
+			bail!("Configuration file permissions are insecure {config_file:?}\n\
+				Current permissions: {:o}\n\
+				Required: 0600 (owner read/write only).\n\
+				Fix with: chmod 600 {config_file:?}",
+				meta.permissions().mode());
+	}	}
 	let settings: config::Config = config::Config::builder()
 		.set_default("api_gateway", "https://api.telegram.org").stack()?
 		.set_default("fields", vec!["date", "from", "subject"]).stack()?
@@ -70,8 +77,11 @@ pub async fn async_main () -> Result<()> {
 			.to_str().context("Can't convert hostname to string, bad UTF-8?")?]).stack()?
 		.add_source(config::File::from(config_file))
 		.build()
-		.with_context(|| format!("[{config_file:?}] there was an error reading config\n\
-			\tplease consult \"smtp2tg.toml.example\" for details"))?;
+		.with_context(|| format!(
+			"Failed to parse configuration file: {config_file:?}\n\
+			Check syntax against smtp2tg.toml.example.\n\
+			Common issues: missing quotes, trailing commas in inline tables, or invalid types."
+		))?;
 
 	let listen_on = settings.get_string("listen_on").stack()?;
 	let server_name = settings.get_string("hostname").stack()?;
