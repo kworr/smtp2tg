@@ -48,8 +48,7 @@ pub struct Attachment {
 /// Returns an error if the text contains Telegram closing tags (`</pre>`, `</code>`).
 pub fn validate <'a>(text: &'a str) -> Result<Cow<'a, str>> {
 	if RE_CLOSING.is_match(text) {
-		bail!("Telegram closing tag found.");
+		bail!("Text contains a Telegram closing tag (e.g., </pre>, </code>).");
 	} else {
 		Ok(encode_text(text))
-	}
-}
+}	}
