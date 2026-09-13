@@ -18,7 +18,18 @@ use stacked_errors::{
 use tgbot::{
 	api::Client,
 	types::{
-		ChatPeerId, InputFile, InputFileReader, InputMediaDocument, InputText, MediaGroup, MediaGroupItem, Message, ParseMode::Html, SendDocument, SendMediaGroup, SendMessage
+		ChatPeerId,
+		InputFile,
+		InputFileReader,
+		InputMediaDocument,
+		InputText,
+		MediaGroup,
+		MediaGroupItem,
+		Message,
+		ParseMode::Html,
+		SendDocument,
+		SendMediaGroup,
+		SendMessage,
 	},
 };
 
