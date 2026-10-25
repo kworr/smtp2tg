@@ -174,26 +174,13 @@ impl MailServer {
 
 			let text_parts = mail.text_body().len();
 			let html_parts = mail.html_body().len();
-			let attachments = mail.attachments().len();
 			if html_parts != text_parts {
 				self.tg.debug(&format!("Hm, we have {html_parts} HTML parts and {text_parts} text parts.")).await?;
 			}
-			//let mut html_num = 0;
 			let mut text_num = 0;
-			let mut file_num = 0;
-			// let's display first html or text part as body
-			let mut body: String = "".into();
-			/*
-			 * actually I don't wanna parse that html stuff
-			if html_parts > 0 {
-				let text = mail.body_html(0).stack()?;
-				if text.len() < 4096 - header_size {
-					body = text;
-					html_num = 1;
-				}
-			};
-			*/
-			if body.is_empty() && text_parts > 0 {
+			// Display the first text part as the body if it fits.
+			let mut body = String::new();
+			if text_parts > 0 {
 				let text = mail.body_text(0)
 					.context("Failed to extract text from message")?
 					.replace("\r\n", "\n");
@@ -203,61 +190,39 @@ impl MailServer {
 				// - (mail text)
 				// - 6: </pre>
 				if text.len() < 4096 - ( reply.len() + 6 ) {
-					body = text.to_string();
+					body = text.into_owned();
 					text_num = 1;
 				}
 			};
 			let msg = format!("{}{}</pre>", reply, body);
 
-			// and let's collect all other attachment parts
-			let mut files_to_send = vec![];
-			/*
-			 * let's just skip html parts for now, they just duplicate text?
-			while html_num < html_parts {
-				files_to_send.push(mail.html_part(html_num).stack()?);
-				html_num += 1;
-			}
-			*/
-			while text_num < text_parts {
-				files_to_send.push(mail.text_body().nth(text_num)
-					.context("Failed to get text part from message.")?);
-				text_num += 1;
-			}
-			while file_num < attachments {
-				files_to_send.push(mail.attachments().nth(file_num)
-					.context("Failed to get file part from message.")?);
-				file_num += 1;
-			}
+			// Send remaining text-body parts followed by attachments.
+			let files_to_send: Vec<_> = mail.text_body().skip(text_num)
+				.chain(mail.attachments()).collect();
 
 			for chat in rcpt {
 				if !files_to_send.is_empty() {
 					let mut files = vec![];
-					// let mut first_one = true;
 					for chunk in &files_to_send {
 						let data: Vec<u8> = chunk.decoded().to_vec();
 						let mut filename: Option<String> = None;
-						for header in chunk.headers() {
-							if header.raw_name() == "Content-Type" {
-								match header.value() {
-									mail_parser::HeaderValue::ContentType(contenttype) => {
-										if let Some(fname) = contenttype.attribute("name") {
-											filename = Some(fname.to_owned());
-										}
-									},
-									_ => {
-										self.tg.debug("Attachment has bad ContentType header.").await?;
-									},
-								};
-							};
-						};
-						let filename = if let Some(fname) = filename {
-							fname
-						} else {
-							"Attachment.txt".into()
-						};
+						for header in chunk.headers().iter()
+							.filter(|header| header.raw_name() == "Content-Type")
+						{
+							match header.value() {
+								mail_parser::HeaderValue::ContentType(contenttype) => {
+									if let Some(fname) = contenttype.attribute("name") {
+										filename = Some(fname.to_owned());
+									}
+								},
+								_ => {
+									self.tg.debug("Attachment has bad ContentType header.").await?;
+								},
+							}
+						}
 						files.push(Attachment {
 							data: Cursor::new(data),
-							name: filename,
+							name: filename.unwrap_or_else(|| "Attachment.txt".into()),
 						});
 					}
 					self.tg.sendgroup(chat, files, &msg).await?;
