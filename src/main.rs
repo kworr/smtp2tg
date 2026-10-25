@@ -2,7 +2,10 @@
 //! messages to specified chats, generally you specify which email address is
 //! available in configuration, everything else is sent to default address.
 
-use smol_macros::main;
+use smol_macros::{
+	LocalExecutor,
+	main,
+};
 
 use std::{
 	os::unix::fs::PermissionsExt,
@@ -44,7 +47,7 @@ main! {
 ///
 /// # Panics
 /// Panics if configuring or serving the SMTP server fails.
-	async fn main () -> Result<()> {
+	async fn main (ex: &LocalExecutor<'_>) -> Result<()> {
 		let args = Args::parse();
 		let config_file = Path::new(&args.config);
 		if !config_file.try_exists().stack()? {

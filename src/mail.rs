@@ -107,7 +107,7 @@ impl MailServer {
 			.case_insensitive(true).build().stack()?;
 
 		Ok(MailServer {
-			data: vec!(),
+			data: vec![],
 			headers: None,
 			tg,
 			fields,
@@ -172,9 +172,9 @@ impl MailServer {
 			reply.push("</blockquote><pre>".into());
 			let reply = reply.join("\n");
 
-			let html_parts = mail.html_body_count();
-			let text_parts = mail.text_body_count();
-			let attachments = mail.attachment_count();
+			let text_parts = mail.text_body().len();
+			let html_parts = mail.html_body().len();
+			let attachments = mail.attachments().len();
 			if html_parts != text_parts {
 				self.tg.debug(&format!("Hm, we have {html_parts} HTML parts and {text_parts} text parts.")).await?;
 			}
@@ -219,12 +219,12 @@ impl MailServer {
 			}
 			*/
 			while text_num < text_parts {
-				files_to_send.push(mail.text_part(text_num.try_into().stack()?)
+				files_to_send.push(mail.text_body().nth(text_num)
 					.context("Failed to get text part from message.")?);
 				text_num += 1;
 			}
 			while file_num < attachments {
-				files_to_send.push(mail.attachment(file_num.try_into().stack()?)
+				files_to_send.push(mail.attachments().nth(file_num)
 					.context("Failed to get file part from message.")?);
 				file_num += 1;
 			}
@@ -234,10 +234,10 @@ impl MailServer {
 					let mut files = vec![];
 					// let mut first_one = true;
 					for chunk in &files_to_send {
-						let data: Vec<u8> = chunk.contents().to_vec();
+						let data: Vec<u8> = chunk.decoded().to_vec();
 						let mut filename: Option<String> = None;
 						for header in chunk.headers() {
-							if header.name() == "Content-Type" {
+							if header.raw_name() == "Content-Type" {
 								match header.value() {
 									mail_parser::HeaderValue::ContentType(contenttype) => {
 										if let Some(fname) = contenttype.attribute("name") {
