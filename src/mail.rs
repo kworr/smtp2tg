@@ -220,7 +220,7 @@ impl MailServer {
 						let data: Vec<u8> = chunk.decoded().to_vec();
 						let mut filename: Option<String> = None;
 						for header in chunk.headers().iter()
-							.filter(|header| header.raw_name() == "Content-Type")
+							.filter(|header| header.raw_name().eq_ignore_ascii_case("Content-Type"))
 						{
 							match header.value() {
 								mail_parser::HeaderValue::ContentType(contenttype) => {
