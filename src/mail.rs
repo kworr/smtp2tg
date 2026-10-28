@@ -69,7 +69,8 @@ impl MailServer {
 	/// * `settings` - Parsed application configuration.
 	///
 	/// # Errors
-	/// Returns an error if required configuration values are missing or invalid.
+	/// Returns an error if required configuration values are missing or invalid,
+	/// Telegram API client creation fails, or the address regex cannot be built.
 	pub fn new (settings: config::Config) -> Result<MailServer> {
 		let api_key = settings.get_string("api_key")
 			.context("[smtp2tg.toml] missing \"api_key\" parameter.\n")?;
@@ -131,7 +132,19 @@ impl MailServer {
 			bail!("Email address {name:?} is not from an allowed domain.");
 	}	}
 
-	/// Attempt to deliver one message
+	/// Forwards the buffered email to each distinct destination chat, using the
+	/// default chat for allowed addresses without a configured recipient.
+	///
+	/// Inlines the first plain-text body if the escaped message is below 4096
+	/// bytes. Sends remaining text parts and decoded attachments as documents;
+	/// HTML body parts are omitted. Leaves the buffered data and envelope intact.
+	///
+	/// # Errors
+	/// Returns an error for a missing envelope, no recipients, a disallowed
+	/// address, mail parsing or part extraction failures, or rejected closing
+	/// `pre`/`code` tags in text passed to validation. Propagates media-group
+	/// construction and Telegram request errors, including diagnostic sends.
+	/// Delivery to earlier chats is not rolled back if a later send fails.
 	async fn relay_mail (&self) -> Result<()> {
 		if let Some(headers) = &self.headers {
 			let mail = mail_parser::MessageParser::new().parse(&self.data)

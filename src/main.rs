@@ -44,6 +44,8 @@ main! {
 /// # Errors
 /// Returns an error if the configuration file is missing, inaccessible,
 /// insecure, malformed, or contains invalid required settings.
+/// Also returns an error if the system hostname cannot be read or is not
+/// valid UTF-8, or if mail server initialisation fails.
 ///
 /// # Panics
 /// Panics if configuring or serving the SMTP server fails.
