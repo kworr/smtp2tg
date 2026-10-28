@@ -69,7 +69,8 @@ impl MailServer {
 	/// * `settings` - Parsed application configuration.
 	///
 	/// # Errors
-	/// Returns an error if required configuration values are missing or invalid.
+	/// Returns an error if required configuration values are missing or invalid,
+	/// Telegram API client creation fails, or the address regex cannot be built.
 	pub fn new (settings: config::Config) -> Result<MailServer> {
 		let api_key = settings.get_string("api_key")
 			.context("[smtp2tg.toml] missing \"api_key\" parameter.\n")?;
@@ -107,7 +108,7 @@ impl MailServer {
 			.case_insensitive(true).build().stack()?;
 
 		Ok(MailServer {
-			data: vec!(),
+			data: vec![],
 			headers: None,
 			tg,
 			fields,
@@ -131,7 +132,19 @@ impl MailServer {
 			bail!("Email address {name:?} is not from an allowed domain.");
 	}	}
 
-	/// Attempt to deliver one message
+	/// Forwards the buffered email to each distinct destination chat, using the
+	/// default chat for allowed addresses without a configured recipient.
+	///
+	/// Inlines the first plain-text body if the escaped message is below 4096
+	/// bytes. Sends remaining text parts and decoded attachments as documents;
+	/// HTML body parts are omitted. Leaves the buffered data and envelope intact.
+	///
+	/// # Errors
+	/// Returns an error for a missing envelope, no recipients, a disallowed
+	/// address, mail parsing or part extraction failures, or rejected closing
+	/// `pre`/`code` tags in text passed to validation. Propagates media-group
+	/// construction and Telegram request errors, including diagnostic sends.
+	/// Delivery to earlier chats is not rolled back if a later send fails.
 	async fn relay_mail (&self) -> Result<()> {
 		if let Some(headers) = &self.headers {
 			let mail = mail_parser::MessageParser::new().parse(&self.data)
@@ -172,28 +185,15 @@ impl MailServer {
 			reply.push("</blockquote><pre>".into());
 			let reply = reply.join("\n");
 
-			let html_parts = mail.html_body_count();
-			let text_parts = mail.text_body_count();
-			let attachments = mail.attachment_count();
+			let text_parts = mail.text_body().len();
+			let html_parts = mail.html_body().len();
 			if html_parts != text_parts {
 				self.tg.debug(&format!("Hm, we have {html_parts} HTML parts and {text_parts} text parts.")).await?;
 			}
-			//let mut html_num = 0;
 			let mut text_num = 0;
-			let mut file_num = 0;
-			// let's display first html or text part as body
-			let mut body: String = "".into();
-			/*
-			 * actually I don't wanna parse that html stuff
-			if html_parts > 0 {
-				let text = mail.body_html(0).stack()?;
-				if text.len() < 4096 - header_size {
-					body = text;
-					html_num = 1;
-				}
-			};
-			*/
-			if body.is_empty() && text_parts > 0 {
+			// Display the first text part as the body if it fits.
+			let mut body = String::new();
+			if text_parts > 0 {
 				let text = mail.body_text(0)
 					.context("Failed to extract text from message")?
 					.replace("\r\n", "\n");
@@ -203,61 +203,39 @@ impl MailServer {
 				// - (mail text)
 				// - 6: </pre>
 				if text.len() < 4096 - ( reply.len() + 6 ) {
-					body = text.to_string();
+					body = text.into_owned();
 					text_num = 1;
 				}
 			};
 			let msg = format!("{}{}</pre>", reply, body);
 
-			// and let's collect all other attachment parts
-			let mut files_to_send = vec![];
-			/*
-			 * let's just skip html parts for now, they just duplicate text?
-			while html_num < html_parts {
-				files_to_send.push(mail.html_part(html_num).stack()?);
-				html_num += 1;
-			}
-			*/
-			while text_num < text_parts {
-				files_to_send.push(mail.text_part(text_num.try_into().stack()?)
-					.context("Failed to get text part from message.")?);
-				text_num += 1;
-			}
-			while file_num < attachments {
-				files_to_send.push(mail.attachment(file_num.try_into().stack()?)
-					.context("Failed to get file part from message.")?);
-				file_num += 1;
-			}
+			// Send remaining text-body parts followed by attachments.
+			let files_to_send: Vec<_> = mail.text_body().skip(text_num)
+				.chain(mail.attachments()).collect();
 
 			for chat in rcpt {
 				if !files_to_send.is_empty() {
 					let mut files = vec![];
-					// let mut first_one = true;
 					for chunk in &files_to_send {
-						let data: Vec<u8> = chunk.contents().to_vec();
+						let data: Vec<u8> = chunk.decoded().to_vec();
 						let mut filename: Option<String> = None;
-						for header in chunk.headers() {
-							if header.name() == "Content-Type" {
-								match header.value() {
-									mail_parser::HeaderValue::ContentType(contenttype) => {
-										if let Some(fname) = contenttype.attribute("name") {
-											filename = Some(fname.to_owned());
-										}
-									},
-									_ => {
-										self.tg.debug("Attachment has bad ContentType header.").await?;
-									},
-								};
+						for header in chunk.headers().iter()
+							.filter(|header| header.raw_name().eq_ignore_ascii_case("Content-Type"))
+						{
+							match header.value() {
+								mail_parser::HeaderValue::ContentType(contenttype) => {
+									if let Some(fname) = contenttype.attribute("name") {
+										filename = Some(fname.to_owned());
+									}
+								},
+								_ => {
+									self.tg.debug("Attachment has bad ContentType header.").await?;
+								},
 							};
-						};
-						let filename = if let Some(fname) = filename {
-							fname
-						} else {
-							"Attachment.txt".into()
 						};
 						files.push(Attachment {
 							data: Cursor::new(data),
-							name: filename,
+							name: filename.unwrap_or_else(|| "Attachment.txt".into()),
 						});
 					}
 					self.tg.sendgroup(chat, files, &msg).await?;

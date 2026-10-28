@@ -4,6 +4,9 @@ on:
     branches: [ master, release ]
   pull_request:
 
+permissions:
+  contents: read
+
 # sccache enable for rust/C builds
 env:
   SCCACHE_GHA_ENABLED: "true"
@@ -14,8 +17,6 @@ jobs:
     name: Run rust-clippy analyzing and tests
     runs-on: ubuntu-latest
     if: github.event_name == 'push' || (github.head_ref != 'master' && github.head_ref != 'release')
-    permissions:
-      contents: read
     steps:
       # SETUP
       - uses: actions/checkout@v7
