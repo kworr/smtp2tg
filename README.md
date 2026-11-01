@@ -90,7 +90,7 @@ Hello, world!
 <blockquote expandable>
 <u><i>Subject:</i></u> <code>Test</code>
 <u><i>From:</i></u> <code>user@example.com</code>
-<u><i>Date:</i></u> <code>Mon, 01 Jan 2024 12:00:00 +0000</code>
+<u><i>Date:</i></u> <code>2024-01-01T12:00:00+00:00</code>
 </blockquote>
 <pre>Hello, world!</pre>
 ```

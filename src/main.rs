@@ -2,11 +2,6 @@
 //! messages to specified chats, generally you specify which email address is
 //! available in configuration, everything else is sent to default address.
 
-use smol_macros::{
-	LocalExecutor,
-	main,
-};
-
 use std::{
 	os::unix::fs::PermissionsExt,
 	path::Path,
@@ -32,7 +27,6 @@ struct Args {
 	config: String,
 }
 
-main! {
 /// Main asynchronous entry point for the application. Runs the gateway using
 /// the configuration selected on the command line.
 ///
@@ -47,7 +41,8 @@ main! {
 ///
 /// # Panics
 /// Panics if configuring or serving the SMTP server fails.
-	async fn main (ex: &LocalExecutor<'_>) -> Result<()> {
+fn main () -> Result<()> {
+	smol::block_on(async move{
 		let args = Args::parse();
 		let settings = {
 			// Load configuration defaults and overrides after checking file permissions.
@@ -90,8 +85,10 @@ main! {
 		// TODO: remove unwraps when mailin-embedded bumps with better error handling
 		server.with_name(server_name)
 			.with_ssl(mailin_embedded::SslConfig::None).unwrap()
-			.with_addr(listen_on).unwrap();
+			.with_addr(listen_on).unwrap()
+			.with_num_threads(1);
 		server.serve().unwrap();
 
 		Ok(())
-}	}
+	})
+}
